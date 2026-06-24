@@ -44,18 +44,18 @@ void loop() {
   update_mode_button_pending();
 
   update_state();
-  update_focus_session();
+  update_spa_session();
   update_daynight_schedule();
   compute_modulation();
 
   const bool active = user_is_present();
   update_showcase_inputs();
   update_canvas_inputs();
-  update_focus_inputs();
+  update_spa_inputs();
 
   update_status();
 
-  const VisualState target = {mode, focus_phase, active};
+  const VisualState target = {mode, spa_phase, active};
 
   transition_begin_if_changed(target, last_unscaled);
 

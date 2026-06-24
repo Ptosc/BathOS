@@ -1,75 +1,63 @@
 #include "hardware.h"
 
-static unsigned long focus_deep_at = 0;
-static bool focus_phase_manual = false;
 static int last_mode = MODE_OFF;
+static long last_spa_enc1 = 0;
+static long last_spa_enc2 = 0;
 static long last_showcase_enc1 = 0;
 static long last_showcase_enc2 = 0;
-static long last_focus_enc1 = 0;
-static long last_focus_enc2 = 0;
 static long last_canvas_enc1 = 0;
 static long last_canvas_enc2 = 0;
-
-static const uint8_t CANVAS_EVENING_HUE = 3;
-static const uint8_t CANVAS_EVENING_SAT = 240;
 static int schedule_last_hour = -1;
 
-void update_focus_session() {
+void update_spa_session() {
   const bool present = user_is_present();
-  const bool in_focus = (mode == MODE_FOCUS);
+  const bool in_spa = (mode == MODE_SPA);
 
-  if (!in_focus || !present) {
-    focus_deep_at = 0;
-    focus_phase = FOCUS_NONE;
-    focus_phase_manual = false;
-    focus_candle_reset();
+  if (!in_spa || !present) {
+    if (spa_phase != SPA_NONE) {
+      spa_phase = SPA_NONE;
+      spa_candle_reset();
+    }
     return;
   }
 
-  if (focus_deep_at == 0) {
-    focus_deep_at = millis() + FOCUS_WARMUP_MS;
+  if (spa_phase == SPA_NONE) {
+    spa_phase = SPA_BASE;
+  }
+}
+
+void toggle_spa_candle() {
+  if (mode != MODE_SPA || spa_phase == SPA_NONE) return;
+
+  if (spa_phase == SPA_CANDLE) {
+    spa_phase = SPA_BASE;
+    spa_candle_reset();
+    return;
   }
 
-  if (focus_phase_manual) return;
-
-  focus_phase = (millis() >= focus_deep_at) ? FOCUS_DEEP : FOCUS_ARRIVAL;
-}
-
-void skip_focus_warmup() {
-  if (mode != MODE_FOCUS || focus_phase != FOCUS_ARRIVAL) return;
-  focus_deep_at = millis();
-  focus_phase = FOCUS_DEEP;
-  focus_phase_manual = true;
-}
-
-void toggle_focus_color() {
-  if (mode != MODE_FOCUS || focus_phase == FOCUS_NONE) return;
-  focus_phase_manual = true;
-  focus_phase = (focus_phase == FOCUS_DEEP) ? FOCUS_ARRIVAL : FOCUS_DEEP;
+  spa_phase = SPA_CANDLE;
+  spa_candle_reset();
 }
 
 static void handle_mode_change() {
   if (mode == last_mode) return;
 
+  if (mode == MODE_SPA) {
+    last_spa_enc1 = get_encoder1_pos();
+    last_spa_enc2 = get_encoder2_pos();
+    spa_apply_schedule_defaults_now();
+    if (user_is_present()) {
+      spa_phase = SPA_BASE;
+    } else {
+      spa_phase = SPA_NONE;
+    }
+    spa_candle_reset();
+  }
+
   if (mode == MODE_SHOWCASE) {
     showcase_reset();
     last_showcase_enc1 = get_encoder1_pos();
     last_showcase_enc2 = get_encoder2_pos();
-  }
-
-  if (mode == MODE_FOCUS) {
-    last_focus_enc1 = get_encoder1_pos();
-    last_focus_enc2 = get_encoder2_pos();
-    const bool already_at_desk = user_is_present();
-    focus_phase_manual = false;
-    if (already_at_desk) {
-      focus_deep_at = millis();
-      focus_phase = FOCUS_DEEP;
-      focus_candle_reset();
-    } else {
-      focus_deep_at = 0;
-      focus_phase = FOCUS_NONE;
-    }
   }
 
   if (mode == MODE_CANVAS) {
@@ -78,6 +66,23 @@ static void handle_mode_change() {
   }
 
   last_mode = mode;
+}
+
+void update_spa_inputs() {
+  if (mode != MODE_SPA) return;
+  if (spa_phase == SPA_NONE) return;
+
+  spa_tuning_tick();
+
+  const long enc1 = get_encoder1_pos();
+  const long enc2 = get_encoder2_pos();
+  const int16_t d1 = (int16_t)(enc1 - last_spa_enc1);
+  const int16_t d2 = (int16_t)(enc2 - last_spa_enc2);
+
+  spa_tuning_update(d1, d2, button_is_held(BUTTON_T1));
+
+  last_spa_enc1 = enc1;
+  last_spa_enc2 = enc2;
 }
 
 void update_showcase_inputs() {
@@ -93,25 +98,6 @@ void update_showcase_inputs() {
 
   last_showcase_enc1 = enc1;
   last_showcase_enc2 = enc2;
-}
-
-void update_focus_inputs() {
-  if (mode != MODE_FOCUS) return;
-  if (button_is_held(BUTTON_T1)) return;
-
-  focus_tuning_tick();
-
-  if (focus_phase == FOCUS_NONE) return;
-
-  const long enc1 = get_encoder1_pos();
-  const long enc2 = get_encoder2_pos();
-  const int16_t d1 = (int16_t)(enc1 - last_focus_enc1);
-  const int16_t d2 = (int16_t)(enc2 - last_focus_enc2);
-
-  focus_tuning_update(d1, d2, focus_phase);
-
-  last_focus_enc1 = enc1;
-  last_focus_enc2 = enc2;
 }
 
 void update_canvas_inputs() {
@@ -144,24 +130,19 @@ void update_daynight_schedule() {
   const int hour = schedule_local_hour();
   if (hour < 0) return;
 
-  const bool focus_slot = schedule_in_focus_hours(hour);
   const bool hour_changed = (schedule_last_hour != hour);
   schedule_last_hour = hour;
 
   if (!hour_changed && !session_start) return;
 
-  if (focus_slot) {
-    if (mode != MODE_FOCUS) {
-      mode = MODE_FOCUS;
-      handle_mode_change();
-    }
+  if (mode == MODE_OFF) {
+    mode = MODE_SPA;
+    handle_mode_change();
     return;
   }
 
-  canvas_apply_defaults(CANVAS_EVENING_HUE, CANVAS_EVENING_SAT);
-  if (mode != MODE_CANVAS) {
-    mode = MODE_CANVAS;
-    handle_mode_change();
+  if (mode == MODE_SPA) {
+    spa_apply_schedule_defaults_now();
   }
 }
 
@@ -171,13 +152,13 @@ static bool t2_pending_single = false;
 
 static void cycle_light_mode() {
   if (mode == MODE_OFF) {
-    mode = MODE_FOCUS;
-  } else if (mode == MODE_FOCUS) {
+    mode = MODE_SPA;
+  } else if (mode == MODE_SPA) {
     mode = MODE_SHOWCASE;
   } else if (mode == MODE_SHOWCASE) {
     mode = MODE_CANVAS;
   } else {
-    mode = MODE_FOCUS;
+    mode = MODE_SPA;
   }
   handle_mode_change();
 }
@@ -209,7 +190,6 @@ void update_mode_button_pending() {
 void handle_mode_buttons(ButtonEvent e) {
   switch (e) {
     case BUTTON_T1:
-      skip_focus_warmup();
       trigger_zone(0, CRGB::Red);
       break;
 
@@ -220,9 +200,7 @@ void handle_mode_buttons(ButtonEvent e) {
       break;
 
     case BUTTON_T3:
-      if (mode == MODE_FOCUS) {
-        toggle_focus_color();
-      }
+      toggle_spa_candle();
       trigger_zone(2, CRGB::Blue);
       break;
 

@@ -58,7 +58,7 @@ static void candle_tick(CandlePixel& p, unsigned valrange, unsigned rndval, unsi
   }
 }
 
-void focus_candle_reset() {
+void spa_candle_reset() {
   for (int i = 0; i < NUMPIXELS; i++) {
     candle_pixels[i] = {0, 0, 0};
     flicker_smoothed[i] = 0;
@@ -66,14 +66,14 @@ void focus_candle_reset() {
   last_tick_ms = 0;
 }
 
-void render_focus_candle(CRGB* out, CRGB bright, CRGB dim) {
+void render_spa_candle(CRGB* out, CRGB bright, CRGB dim) {
   const uint32_t now = millis();
   if (last_tick_ms == 0 || (now - last_tick_ms) >= CANDLE_FRAME_MS) {
     last_tick_ms = now;
 
-    const unsigned valrange = focus_candle_intensity_val();
+    const unsigned valrange = CANDLE_INTENSITY;
     const unsigned rndval = valrange >> 1;
-    const unsigned speed_factor = candle_speed_factor(focus_candle_speed_val());
+    const unsigned speed_factor = candle_speed_factor(CANDLE_SPEED);
 
     for (int i = 0; i < NUMPIXELS; i++) {
       candle_tick(candle_pixels[i], valrange, rndval, speed_factor);
@@ -85,8 +85,4 @@ void render_focus_candle(CRGB* out, CRGB bright, CRGB dim) {
   for (int i = 0; i < NUMPIXELS; i++) {
     out[i] = blend(dim, bright, flicker_smoothed[i]);
   }
-}
-
-void render_focus_candle(CRGB* out) {
-  render_focus_candle(out, FOCUS_CANDLE_BRIGHT, FOCUS_CANDLE_DIM);
 }

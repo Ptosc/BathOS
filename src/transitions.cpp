@@ -1,19 +1,19 @@
 #include "hardware.h"
 
-static VisualState displayed_state = {MODE_OFF, FOCUS_NONE, false};
-static VisualState transition_target = {MODE_OFF, FOCUS_NONE, false};
+static VisualState displayed_state = {MODE_OFF, SPA_NONE, false};
+static VisualState transition_target = {MODE_OFF, SPA_NONE, false};
 static unsigned long transition_start_ms = 0;
 static unsigned long transition_duration_ms = TRANSITION_MS;
 static bool transitioning = false;
 
 static bool visual_state_equals(const VisualState& a, const VisualState& b) {
   return a.mode == b.mode
-      && a.focus_phase == b.focus_phase
+      && a.spa_phase == b.spa_phase
       && a.active == b.active;
 }
 
 static unsigned long transition_ms_for(const VisualState& from, const VisualState& to) {
-  if (from.mode == to.mode && from.focus_phase == to.focus_phase && from.active != to.active) {
+  if (from.mode == to.mode && from.spa_phase == to.spa_phase && from.active != to.active) {
     return TRANSITION_PRESENCE_MS;
   }
   return TRANSITION_MS;

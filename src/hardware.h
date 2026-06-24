@@ -4,7 +4,7 @@
 
 // LED SETUP
 #define PIN 5
-#define NUMPIXELS 107
+#define NUMPIXELS 30
 #define STATUS_PIN 33
 #define STATUS_LED_COUNT 6
 
@@ -39,38 +39,29 @@ extern float sensor_presence;
 extern int mode;
 extern const int max_modes;
 static const int MODE_OFF = 0;
-static const int MODE_FOCUS = 1;
+static const int MODE_SPA = 1;
 static const int MODE_SHOWCASE = 2;
 static const int MODE_CANVAS = 3;
 extern bool always_on;
 
-// Focus session (mode 1): arrival warmup -> deep focus
-enum FocusPhase {
-  FOCUS_NONE = 0,
-  FOCUS_ARRIVAL,
-  FOCUS_DEEP,
+enum SpaPhase {
+  SPA_NONE = 0,
+  SPA_BASE,
+  SPA_CANDLE,
 };
 
-static const unsigned long FOCUS_WARMUP_MS = 30000;
-
-extern FocusPhase focus_phase;
+extern SpaPhase spa_phase;
 
 static const unsigned long TRANSITION_MS = 800;
 static const unsigned long TRANSITION_PRESENCE_MS = 280;
 
-// Focus candle (WLED Candle Multi port)
 static const unsigned CANDLE_FRAME_MS = 25;
 static const uint8_t CANDLE_SPEED = 96;
 static const uint8_t CANDLE_INTENSITY = 224;
-static const CRGB FOCUS_CANDLE_BRIGHT(255, 40, 0);
-static const CRGB FOCUS_CANDLE_DIM(50, 6, 0);
-static const uint8_t FOCUS_DEEP_HUE = 160;
-static const uint8_t FOCUS_DEEP_SAT = 180;
-static const uint8_t FOCUS_DEEP_VAL = 220;
 
 struct VisualState {
   int mode;
-  FocusPhase focus_phase;
+  SpaPhase spa_phase;
   bool active;
 };
 
@@ -84,7 +75,7 @@ struct LightMod {
 
 extern LightMod mod;
 
-// Brightness setpoint 0..255 (T1 held + encoder1); smoothed in compute_modulation()
+// Brightness setpoint 0..255 (T1 held + encoder1 outside spa); smoothed in compute_modulation()
 extern uint8_t g_brightness_raw;
 
 // --- Input layer ---
@@ -104,9 +95,8 @@ bool button_is_held(ButtonEvent btn);
 void handle_mode_buttons(ButtonEvent e);
 void update_state();
 bool user_is_present();
-void update_focus_session();
-void skip_focus_warmup();
-void toggle_focus_color();
+void update_spa_session();
+void toggle_spa_candle();
 void compute_modulation();
 void update_mode_button_pending();
 void update_daynight_schedule();
@@ -114,7 +104,9 @@ void update_daynight_schedule();
 void schedule_init();
 bool schedule_time_valid();
 int schedule_local_hour();
-bool schedule_in_focus_hours(int hour);
+int schedule_local_minutes();
+void spa_schedule_targets(int minutes, uint8_t* out_brightness, CRGB* out_color);
+void spa_apply_schedule_defaults_now();
 
 void showcase_reset();
 void showcase_update(int16_t enc1_delta, int16_t enc2_delta, unsigned long now_ms);
@@ -127,22 +119,22 @@ void render_canvas(unsigned long now_ms);
 uint8_t canvas_hue_val();
 void update_canvas_inputs();
 
+// --- Spa ---
+void spa_apply_schedule_defaults(uint8_t default_brightness, CRGB color);
+void spa_tuning_tick();
+void spa_tuning_update(int16_t enc1_delta, int16_t enc2_delta, bool t1_held);
+uint8_t spa_brightness_val();
+uint8_t spa_sat_val();
+uint8_t spa_hue_val();
+void update_spa_inputs();
+
 // --- Render layer (no input reads, no state mutation) ---
 void render_off();
-void render_focus(const LightMod& mod, FocusPhase phase);
+void render_spa(SpaPhase phase);
 void render_showcase();
 void render_visual_state_to(CRGB* buf, const VisualState& vs);
-void focus_candle_reset();
-void render_focus_candle(CRGB* out);
-void render_focus_candle(CRGB* out, CRGB bright, CRGB dim);
-
-void focus_tuning_update(int16_t enc1_delta, int16_t enc2_delta, FocusPhase phase);
-void focus_tuning_tick();
-void update_focus_inputs();
-uint8_t focus_candle_speed_val();
-uint8_t focus_candle_intensity_val();
-uint8_t focus_deep_hue_val();
-uint8_t focus_deep_sat_val();
+void spa_candle_reset();
+void render_spa_candle(CRGB* out, CRGB bright, CRGB dim);
 void update_status();
 void trigger_zone(uint8_t zone, CRGB color);
 void trigger_status_shutdown();

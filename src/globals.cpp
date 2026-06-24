@@ -12,12 +12,12 @@ int raw_distance = -1;
 int filtered_distance = -1;
 
 float presence = 0.0;
-float sensor_presence = 0.0; // from active sensor (mmWave)
+float sensor_presence = 0.0;
 
 int mode = 0;
-const int max_modes = 4; // off, focus, showcase, canvas
+const int max_modes = 4;
 bool always_on = false;
 
-FocusPhase focus_phase = FOCUS_NONE;
+SpaPhase spa_phase = SPA_NONE;
 
 LightMod mod;

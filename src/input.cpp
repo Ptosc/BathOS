@@ -9,6 +9,8 @@ static long last_brightness_enc1 = 0;
 static bool brightness_enc_synced = false;
 
 static void update_brightness_from_encoder() {
+  if (mode == MODE_SPA) return;
+
   if (!button_is_held(BUTTON_T1)) {
     brightness_enc_synced = false;
     return;

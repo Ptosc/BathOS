@@ -15,6 +15,13 @@ bool user_is_present() {
 }
 
 void compute_modulation() {
+  if (mode == MODE_SPA) {
+    mod.brightness = 255;
+    mod.energy = presence;
+    mod.motion = presence * 0.8f;
+    return;
+  }
+
   const float GAMMA = 2.2f;
   const float ALPHA = 0.08f;
   const float MAX_DELTA = 8.0f;
