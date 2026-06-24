@@ -122,3 +122,50 @@ void poll_encoders_impl() {
   ev.state = (digitalRead(encoder2_a_pin) << 1) | digitalRead(encoder2_b_pin);
   _enc2.process_event(ev);
 }
+
+#ifdef INPUT_DEBUG
+void debug_encoders_impl() {
+  static long last_pos1 = 0;
+  static long last_pos2 = 0;
+  static uint8_t last_ab1 = 0xFF;
+  static uint8_t last_ab2 = 0xFF;
+  static unsigned long last_idle_ms = 0;
+
+  const uint8_t ab1 = (uint8_t)((digitalRead(encoder1_a_pin) << 1) | digitalRead(encoder1_b_pin));
+  const uint8_t ab2 = (uint8_t)((digitalRead(encoder2_a_pin) << 1) | digitalRead(encoder2_b_pin));
+  const long pos1 = _enc1.get_pos();
+  const long pos2 = _enc2.get_pos();
+  const unsigned long now = millis();
+  bool printed = false;
+
+  if (ab1 != last_ab1) {
+    Serial.printf("[ENC] E1 pins A=%d B=%d (GPIO %d/%d)\n",
+                  (ab1 >> 1) & 1, ab1 & 1, encoder1_a_pin, encoder1_b_pin);
+    last_ab1 = ab1;
+    printed = true;
+  }
+  if (ab2 != last_ab2) {
+    Serial.printf("[ENC] E2 pins A=%d B=%d (GPIO %d/%d)\n",
+                  (ab2 >> 1) & 1, ab2 & 1, encoder2_a_pin, encoder2_b_pin);
+    last_ab2 = ab2;
+    printed = true;
+  }
+  if (pos1 != last_pos1) {
+    Serial.printf("[ENC] E1 pos %ld -> %ld\n", last_pos1, pos1);
+    last_pos1 = pos1;
+    printed = true;
+  }
+  if (pos2 != last_pos2) {
+    Serial.printf("[ENC] E2 pos %ld -> %ld\n", last_pos2, pos2);
+    last_pos2 = pos2;
+    printed = true;
+  }
+
+  if (!printed && (now - last_idle_ms) >= 3000) {
+    last_idle_ms = now;
+    Serial.printf("[ENC] idle E1 A=%d B=%d pos=%ld | E2 A=%d B=%d pos=%ld\n",
+                  (ab1 >> 1) & 1, ab1 & 1, pos1,
+                  (ab2 >> 1) & 1, ab2 & 1, pos2);
+  }
+}
+#endif

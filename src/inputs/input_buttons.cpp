@@ -1,14 +1,12 @@
 #include "../hardware.h"
 
-static const int BUTTON_COUNT = 5;
+static const int BUTTON_COUNT = 3;
 
 static const int* button_pin(int idx) {
   switch (idx) {
     case 0: return &taster1_pin;
     case 1: return &taster2_pin;
     case 2: return &taster3_pin;
-    case 3: return &taster_encoder1_pin;
-    case 4: return &taster_encoder2_pin;
     default: return &taster1_pin;
   }
 }
@@ -21,9 +19,6 @@ void init_buttons_impl() {
   pinMode(taster1_pin, INPUT_PULLUP);
   pinMode(taster2_pin, INPUT_PULLUP);
   pinMode(taster3_pin, INPUT_PULLUP);
-  pinMode(taster_encoder1_pin, INPUT_PULLUP);
-  pinMode(taster_encoder2_pin, INPUT_PULLUP);
-  pinMode(poti_pin, INPUT);
 }
 
 // Single debounce: rising edge (released -> pressed), one event per press.
@@ -61,11 +56,22 @@ bool button_is_held(ButtonEvent btn) {
   }
 }
 
-uint8_t read_poti_impl(Poti& p) {
-  const float POTI_SMOOTH_FACTOR = 0.1f;
-  long sum = 0;
-  for (int i = 0; i < 4; i++) sum += analogRead(p.pin);
-  int raw = sum / 4;
-  p.smooth += (raw - p.smooth) * POTI_SMOOTH_FACTOR;
-  return constrain(map((int)p.smooth, 0, 4095, 0, 255), 0, 255);
+#ifdef INPUT_DEBUG
+void debug_buttons_impl() {
+  static bool stable[BUTTON_COUNT] = {};
+  static unsigned long last_change_ms[BUTTON_COUNT] = {};
+  static const char* const NAMES[] = {"T1", "T2", "T3"};
+  const unsigned long DEBOUNCE_MS = 30;
+
+  const unsigned long now = millis();
+  for (int i = 0; i < BUTTON_COUNT; i++) {
+    const bool pressed = is_pressed(i);
+    if (pressed == stable[i]) continue;
+    if ((now - last_change_ms[i]) < DEBOUNCE_MS) continue;
+
+    stable[i] = pressed;
+    last_change_ms[i] = now;
+    Serial.printf("[BTN] %s %s\n", NAMES[i], pressed ? "PRESSED" : "RELEASED");
+  }
 }
+#endif

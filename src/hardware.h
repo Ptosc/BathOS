@@ -15,11 +15,8 @@
 extern const int taster1_pin;
 extern const int taster2_pin;
 extern const int taster3_pin;
-extern const int taster_encoder1_pin;
-extern const int taster_encoder2_pin;
 extern const int mmwave_rx_pin;
 extern const int mmwave_tx_pin;
-extern const int poti_pin;
 extern const int encoder1_a_pin;
 extern const int encoder1_b_pin;
 extern const int encoder2_a_pin;
@@ -85,16 +82,10 @@ struct LightMod {
   float motion;
 };
 
-struct Poti {
-  int pin;
-  float smooth;
-};
-
-extern Poti poti;
 extern LightMod mod;
 
-// Raw poti sample from poll_inputs()
-extern uint8_t g_poti_raw;
+// Brightness setpoint 0..255 (T1 held + encoder1); smoothed in compute_modulation()
+extern uint8_t g_brightness_raw;
 
 // --- Input layer ---
 enum ButtonEvent {
@@ -178,9 +169,12 @@ unsigned long get_mmwave_debounce_ms();
 // Internal implementations (src/inputs/)
 void init_encoders_impl();
 void init_buttons_impl();
+#ifdef INPUT_DEBUG
+void debug_buttons_impl();
+void debug_encoders_impl();
+#endif
 void init_mmwave_impl();
 void read_mmwave_impl();
 void poll_encoders_impl();
 long get_encoder1_pos_impl();
 long get_encoder2_pos_impl();
-uint8_t read_poti_impl(Poti& p);

@@ -120,12 +120,21 @@ void read_mmwave_impl() {
   filtered_distance = (raw_range_cm > 0) ? (int)(filtered_range_cm + 0.5f) : -1;
   sensor_presence = mm_active ? 1.0f : 0.0f;
 
-  // reduced debug: print only on presence change
 #ifdef MMWAVE_DEBUG
+  static unsigned long last_status_ms = 0;
+  if (now - last_status_ms >= 1000) {
+    last_status_ms = now;
+    if (raw_range_cm > 0) {
+      Serial.printf("[MMW] presence=%s raw=%dcm filt=%.0fcm\n",
+                    mm_active ? "ON" : "OFF", raw_range_cm, filtered_range_cm);
+    } else {
+      Serial.printf("[MMW] presence=%s raw=--- filt=---\n", mm_active ? "ON" : "OFF");
+    }
+  }
+
   if (mm_active != _last_mm_active) {
     _last_mm_active = mm_active;
-    Serial.printf("[MMW] presence %s at %dcm (filt=%.1fcm)\n", mm_active ? "ON" : "OFF", raw_distance, filtered_range_cm);
-    if (mm_active) Serial.println("[MMW] PRESENCE DETECTED: ********************************************************");
+    Serial.printf("[MMW] >>> presence %s\n", mm_active ? "ON" : "OFF");
   }
 #endif
 }

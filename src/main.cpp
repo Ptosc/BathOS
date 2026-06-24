@@ -4,15 +4,12 @@
 
 // ===== PIN DEFINITIONS =====
 
-const int taster1_pin = 23;
+const int taster1_pin = 23;  
 const int taster2_pin = 18;
 const int taster3_pin = 17;
-const int taster_encoder1_pin = 19;
-const int taster_encoder2_pin = 21;
 
 const int mmwave_tx_pin = 16;
 const int mmwave_rx_pin = 34;
-const int poti_pin = 32;
 
 const int encoder1_a_pin = 25;
 const int encoder1_b_pin = 26;
@@ -20,15 +17,16 @@ const int encoder2_a_pin = 13;
 const int encoder2_b_pin = 22;
 
 void setup() {
+  Serial.begin(115200);
+  delay(500);
+  Serial.println("BOOT");
+
   FastLED.addLeds<WS2812B, PIN, GRB>(leds, NUMPIXELS);
   FastLED.addLeds<WS2812B, STATUS_PIN, GRB>(status_led, STATUS_LED_COUNT);
   FastLED.setBrightness(255);
   FastLED.clear(true);
 
   init_inputs();
-
-  Serial.begin(115200);
-  Serial.println("BOOT");
 
   schedule_init();
 }

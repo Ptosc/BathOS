@@ -19,7 +19,7 @@ void compute_modulation() {
   const float ALPHA = 0.08f;
   const float MAX_DELTA = 8.0f;
 
-  float x = (float)g_poti_raw / 255.0f;
+  float x = (float)g_brightness_raw / 255.0f;
   float mapped = powf(x, GAMMA) * 255.0f;
 
   intensity_smooth += (mapped - intensity_smooth) * ALPHA;

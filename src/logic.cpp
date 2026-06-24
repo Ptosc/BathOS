@@ -82,6 +82,7 @@ static void handle_mode_change() {
 
 void update_showcase_inputs() {
   if (mode != MODE_SHOWCASE) return;
+  if (button_is_held(BUTTON_T1)) return;
 
   const long enc1 = get_encoder1_pos();
   const long enc2 = get_encoder2_pos();
@@ -96,6 +97,7 @@ void update_showcase_inputs() {
 
 void update_focus_inputs() {
   if (mode != MODE_FOCUS) return;
+  if (button_is_held(BUTTON_T1)) return;
 
   focus_tuning_tick();
 
@@ -114,6 +116,7 @@ void update_focus_inputs() {
 
 void update_canvas_inputs() {
   if (mode != MODE_CANVAS) return;
+  if (button_is_held(BUTTON_T1)) return;
 
   canvas_tuning_tick();
 

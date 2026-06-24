@@ -21,6 +21,3 @@ bool always_on = false;
 FocusPhase focus_phase = FOCUS_NONE;
 
 LightMod mod;
-
-// Define potentiometers in a single place (global definitions)
-Poti poti  = {32, 0};
