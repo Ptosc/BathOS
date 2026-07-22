@@ -79,6 +79,29 @@ void trigger_zone(uint8_t zone, CRGB color) {
   zones[zone].active = true;
 }
 
+static CRGB status_base_pixel(int i) {
+  if (!always_on) return CRGB::Black;
+
+  const CRGB base = CHSV(96, 200, 140);
+  const uint8_t edge = (i == 0 || i == STATUS_LED_COUNT - 1) ? 200 : 255;
+  CRGB c = base;
+  c.nscale8_video(edge);
+  return c;
+}
+
+static void render_status_base() {
+  for (int i = 0; i < STATUS_LED_COUNT; i++) {
+    status_led[i] = status_base_pixel(i);
+  }
+}
+
+static CRGB zone_flash_pixel(CRGB color, uint8_t intensity, uint8_t edge_falloff) {
+  CRGB c = color;
+  c.nscale8_video(intensity);
+  c.nscale8_video(edge_falloff);
+  return c;
+}
+
 void update_status() {
   const unsigned long now = millis();
 
@@ -96,27 +119,28 @@ void update_status() {
     return;
   }
 
+  render_status_base();
+
   for (int z = 0; z < 3; z++) {
     if (!zones[z].active) continue;
 
-    unsigned long elapsed = now - zones[z].triggered_ms;
+    const unsigned long elapsed = now - zones[z].triggered_ms;
     if (elapsed >= ZONE_FADE_MS) {
       zones[z].active = false;
       continue;
     }
 
-    // Ease-out fade: full brightness -> off over ZONE_FADE_MS
-    uint8_t intensity = fade_intensity(elapsed);
+    const uint8_t intensity = fade_intensity(elapsed);
+    if (intensity == 0) continue;
 
-    int start = z * 2;
-    int end = start + 2;
+    const int start = z * 2;
+    const int end = start + 2;
 
     for (int i = start; i < end; i++) {
-      uint8_t edge_falloff = (i == start || i == end - 1) ? 180 : 255;
-      CRGB c = zones[z].color;
-      c.nscale8_video(intensity);
-      c.nscale8_video(edge_falloff);
-      status_led[i] = c;
+      const uint8_t edge_falloff = (i == start || i == end - 1) ? 180 : 255;
+      const CRGB base = status_base_pixel(i);
+      const CRGB flash = zone_flash_pixel(zones[z].color, intensity, edge_falloff);
+      status_led[i] = blend(base, flash, intensity);
     }
   }
 }

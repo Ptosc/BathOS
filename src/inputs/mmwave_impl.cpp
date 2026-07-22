@@ -1,47 +1,137 @@
 #include "../hardware.h"
 #include <Arduino.h>
 
-// Implementation of mmWave moved into inputs/ to tidy project layout.
-// Exposes init_mmwave_impl() and read_mmwave_impl(); root-level mmwave.cpp will forward.
-// NOTE: distances are published as centimeters (cm)
+// mmWave UART reader (LD2410 and similar text/binary line emitters).
+// Distances are normalized to centimeters before thresholding.
 
-// Configuration defaults
 static const int MMWAVE_BAUD = 115200;
 static const int MMWAVE_RX_PIN = 34;
 static const int MMWAVE_TX_PIN = 16;
-static const float MMW_ALPHA = 0.55f;
-// thresholds in CENTIMETERS (modifiable at runtime)
-static int _mmw_thresh_on = 120;   // cm
-static int _mmw_thresh_off = 180;  // cm
-static unsigned long _mmw_debounce_on_ms = 50;
-static unsigned long _mmw_debounce_off_ms = 700;
+
+static int _mmw_thresh_on = MMWAVE_THRESH_ON_CM;
+static int _mmw_thresh_off = MMWAVE_THRESH_OFF_CM;
+static unsigned long _mmw_debounce_on_ms = MMWAVE_DEBOUNCE_ON_MS;
+static unsigned long _mmw_debounce_off_ms = MMWAVE_DEBOUNCE_OFF_MS;
 
 static HardwareSerial mmSerial(2);
 
-// parser buffer
 static char line_buf[128];
 static size_t line_idx = 0;
 
-// state (centimeters)
 static int raw_range_cm = -1;
 static float filtered_range_cm = 0.0f;
 static bool mm_active = false;
 static unsigned long mm_on_candidate_since = 0;
 static unsigned long mm_off_candidate_since = 0;
-static bool _last_mm_active = false; // for reduced debug
+static unsigned long last_frame_ms = 0;
+
+#ifdef MMWAVE_DEBUG
+static bool _last_mm_active = false;
+static bool _last_stale = false;
+#endif
+
+static void note_frame() {
+  last_frame_ms = millis();
+}
+
+static void invalidate_range() {
+  raw_range_cm = -1;
+}
+
+static void decay_filter_toward_off() {
+  const float off_anchor = (float)(_mmw_thresh_off + 20);
+  if (filtered_range_cm <= 0.0f) {
+    filtered_range_cm = off_anchor;
+    return;
+  }
+  filtered_range_cm = filtered_range_cm * MMWAVE_FILTER_DECAY
+                    + off_anchor * (1.0f - MMWAVE_FILTER_DECAY);
+}
+
+static void process_line(const char* s) {
+  const char* p = s;
+  while (*p && !((*p >= '0' && *p <= '9') || *p == '-')) p++;
+  if (!*p) return;
+
+  note_frame();
+
+  const long v = atol(p);
+  if (v == 0) {
+    invalidate_range();
+    decay_filter_toward_off();
+    return;
+  }
+
+  const int cm = (v > 500) ? (int)((v + 5) / 10) : (int)v;
+  if (cm <= 0) {
+    invalidate_range();
+    decay_filter_toward_off();
+    return;
+  }
+
+  raw_range_cm = cm;
+  if (filtered_range_cm <= 0.0f) filtered_range_cm = (float)raw_range_cm;
+  filtered_range_cm = (MMWAVE_FILTER_ALPHA * raw_range_cm)
+                    + ((1.0f - MMWAVE_FILTER_ALPHA) * filtered_range_cm);
+}
+
+static bool reading_is_stale(unsigned long now) {
+  return (last_frame_ms > 0) && ((now - last_frame_ms) > MMWAVE_STALE_MS);
+}
+
+static bool wants_presence_on(bool stale) {
+  if (stale) return false;
+  if (raw_range_cm <= 0) return false;
+  return raw_range_cm <= _mmw_thresh_on;
+}
+
+static bool wants_presence_off(bool stale) {
+  if (stale) return true;
+  if (raw_range_cm <= 0) return true;
+  return filtered_range_cm >= (float)_mmw_thresh_off;
+}
+
+static void update_mm_active(unsigned long now, bool want_on, bool want_off) {
+  if (!mm_active) {
+    if (!want_on) {
+      mm_on_candidate_since = 0;
+      return;
+    }
+    if (mm_on_candidate_since == 0) mm_on_candidate_since = now;
+    if ((now - mm_on_candidate_since) < _mmw_debounce_on_ms) return;
+
+    mm_active = true;
+    mm_on_candidate_since = 0;
+    mm_off_candidate_since = 0;
+    return;
+  }
+
+  if (!want_off) {
+    mm_off_candidate_since = 0;
+    return;
+  }
+  if (mm_off_candidate_since == 0) mm_off_candidate_since = now;
+  if ((now - mm_off_candidate_since) < _mmw_debounce_off_ms) return;
+
+  mm_active = false;
+  mm_on_candidate_since = 0;
+  mm_off_candidate_since = 0;
+}
 
 void set_mmwave_thresholds(int on_cm, int off_cm) {
-  _mmw_thresh_on = on_cm;
-  _mmw_thresh_off = off_cm;
+  if (on_cm > 0 && off_cm > on_cm) {
+    _mmw_thresh_on = on_cm;
+    _mmw_thresh_off = off_cm;
+  }
 #ifdef MMWAVE_DEBUG
-  Serial.printf("[MMW] thresholds set: on=%dcm off=%dcm\n", _mmw_thresh_on, _mmw_thresh_off);
+  Serial.printf("[MMW] thresholds: on=%dcm off=%dcm\n", _mmw_thresh_on, _mmw_thresh_off);
 #endif
 }
 
 void set_mmwave_debounce(unsigned long ms) {
-  _mmw_debounce_off_ms = ms;
+  if (ms >= 100) _mmw_debounce_off_ms = ms;
 #ifdef MMWAVE_DEBUG
-  Serial.printf("[MMW] debounce off set: %lums\n", _mmw_debounce_off_ms);
+  Serial.printf("[MMW] debounce off: %lums\n", _mmw_debounce_off_ms);
 #endif
 }
 
@@ -52,70 +142,37 @@ unsigned long get_mmwave_debounce_ms() { return _mmw_debounce_off_ms; }
 void init_mmwave_impl() {
   mmSerial.begin(MMWAVE_BAUD, SERIAL_8N1, MMWAVE_RX_PIN, MMWAVE_TX_PIN);
 #ifdef MMWAVE_DEBUG
-  Serial.println("[MMW] UART started (impl) - units: cm");
+  Serial.printf("[MMW] UART started on=%d off=%d deb_on=%lums deb_off=%lums stale=%lums\n",
+                _mmw_thresh_on, _mmw_thresh_off,
+                _mmw_debounce_on_ms, _mmw_debounce_off_ms, MMWAVE_STALE_MS);
 #endif
-}
-
-static void process_line(const char *s) {
-  // Try to parse an integer value from the line. The sensor may report mm or cm;
-  // detect a number and convert mm->cm if value seems large (>500) else keep as cm.
-  // This makes parser tolerant to different firmware variants.
-  const char *p = s;
-  // find first digit or '-' sign
-  while (*p && !((*p >= '0' && *p <= '9') || *p == '-')) p++;
-  if (!*p) return;
-  long v = atol(p);
-  if (v == 0) return;
-  // Heuristic: if value looks like millimeters (>500) convert to cm
-  int cm = (v > 500) ? (int)((v + 5) / 10) : (int)v;
-  raw_range_cm = cm;
-  if (filtered_range_cm <= 0.0f) filtered_range_cm = (float)raw_range_cm;
-  filtered_range_cm = (MMW_ALPHA * raw_range_cm) + ((1.0f - MMW_ALPHA) * filtered_range_cm);
 }
 
 void read_mmwave_impl() {
   while (mmSerial.available()) {
-    char c = (char)mmSerial.read();
+    const char c = (char)mmSerial.read();
     if (c == '\r') continue;
-    if (c == '\n' || line_idx >= sizeof(line_buf)-1) {
+    if (c == '\n' || line_idx >= sizeof(line_buf) - 1) {
       if (line_idx > 0) {
         line_buf[line_idx] = '\0';
         process_line(line_buf);
       }
       line_idx = 0;
-    } else {
-      if (isPrintable(c)) line_buf[line_idx++] = c;
+    } else if (isPrintable(c)) {
+      line_buf[line_idx++] = c;
     }
   }
 
-  unsigned long now = millis();
-  // Raw for fast ON, filtered for stable OFF
-  const bool in_range = (raw_range_cm > 0) && (raw_range_cm <= _mmw_thresh_on);
-  const bool out_range = (filtered_range_cm > 0.0f) && (filtered_range_cm >= _mmw_thresh_off);
+  const unsigned long now = millis();
+  const bool stale = reading_is_stale(now);
 
-  if (!mm_active) {
-    if (in_range) {
-      if (mm_on_candidate_since == 0) mm_on_candidate_since = now;
-      if ((now - mm_on_candidate_since) >= _mmw_debounce_on_ms) {
-        mm_active = true;
-        mm_off_candidate_since = 0;
-      }
-    } else {
-      mm_on_candidate_since = 0;
-    }
-  } else {
-    if (out_range) {
-      if (mm_off_candidate_since == 0) mm_off_candidate_since = now;
-      if ((now - mm_off_candidate_since) >= _mmw_debounce_off_ms) {
-        mm_active = false;
-        mm_on_candidate_since = 0;
-      }
-    } else {
-      mm_off_candidate_since = 0;
-    }
+  if (stale) {
+    invalidate_range();
+    decay_filter_toward_off();
   }
 
-  // publish to globals in CENTIMETERS
+  update_mm_active(now, wants_presence_on(stale), wants_presence_off(stale));
+
   raw_distance = raw_range_cm;
   filtered_distance = (raw_range_cm > 0) ? (int)(filtered_range_cm + 0.5f) : -1;
   sensor_presence = mm_active ? 1.0f : 0.0f;
@@ -125,16 +182,26 @@ void read_mmwave_impl() {
   if (now - last_status_ms >= 1000) {
     last_status_ms = now;
     if (raw_range_cm > 0) {
-      Serial.printf("[MMW] presence=%s raw=%dcm filt=%.0fcm\n",
-                    mm_active ? "ON" : "OFF", raw_range_cm, filtered_range_cm);
+      Serial.printf("[MMW] active=%s raw=%dcm filt=%.0fcm%s\n",
+                    mm_active ? "yes" : "no", raw_range_cm, filtered_range_cm,
+                    stale ? " STALE" : "");
     } else {
-      Serial.printf("[MMW] presence=%s raw=--- filt=---\n", mm_active ? "ON" : "OFF");
+      Serial.printf("[MMW] active=%s raw=--- filt=%.0fcm%s off=%lums\n",
+                    mm_active ? "yes" : "no", filtered_range_cm,
+                    stale ? " STALE" : "",
+                    mm_off_candidate_since ? (now - mm_off_candidate_since) : 0UL);
     }
+  }
+
+  if (stale != _last_stale) {
+    _last_stale = stale;
+    if (stale) Serial.println("[MMW] >>> UART stale — debounced OFF pending");
+    else Serial.println("[MMW] >>> UART frames resumed");
   }
 
   if (mm_active != _last_mm_active) {
     _last_mm_active = mm_active;
-    Serial.printf("[MMW] >>> presence %s\n", mm_active ? "ON" : "OFF");
+    Serial.printf("[MMW] >>> sensor presence %s\n", mm_active ? "ON" : "OFF");
   }
 #endif
 }

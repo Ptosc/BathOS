@@ -40,10 +40,6 @@ void init_inputs() {
 void poll_inputs() {
   poll_encoders_impl();
   read_mmwave_impl();
-#ifdef INPUT_DEBUG
-  debug_buttons_impl();
-  debug_encoders_impl();
-#endif
   update_brightness_from_encoder();
 }
 

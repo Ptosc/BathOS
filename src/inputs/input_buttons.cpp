@@ -55,23 +55,3 @@ bool button_is_held(ButtonEvent btn) {
     default: return false;
   }
 }
-
-#ifdef INPUT_DEBUG
-void debug_buttons_impl() {
-  static bool stable[BUTTON_COUNT] = {};
-  static unsigned long last_change_ms[BUTTON_COUNT] = {};
-  static const char* const NAMES[] = {"T1", "T2", "T3"};
-  const unsigned long DEBOUNCE_MS = 30;
-
-  const unsigned long now = millis();
-  for (int i = 0; i < BUTTON_COUNT; i++) {
-    const bool pressed = is_pressed(i);
-    if (pressed == stable[i]) continue;
-    if ((now - last_change_ms[i]) < DEBOUNCE_MS) continue;
-
-    stable[i] = pressed;
-    last_change_ms[i] = now;
-    Serial.printf("[BTN] %s %s\n", NAMES[i], pressed ? "PRESSED" : "RELEASED");
-  }
-}
-#endif

@@ -54,6 +54,25 @@ extern SpaPhase spa_phase;
 
 static const unsigned long TRANSITION_MS = 800;
 static const unsigned long TRANSITION_PRESENCE_MS = 280;
+static const unsigned long PRESENCE_FADE_OUT_MS = 180000UL; // 3 min
+static const unsigned long PRESENCE_FADE_IN_MS = 5000;      // return during fade-out
+
+// mmWave UART presence (centimeters). Wider hysteresis + longer OFF debounce
+// reduce drop-outs while occupied; stale UART is debounced like a normal OFF.
+static const int MMWAVE_THRESH_ON_CM = 160;
+static const int MMWAVE_THRESH_OFF_CM = 210;
+static const unsigned long MMWAVE_DEBOUNCE_ON_MS = 80;
+static const unsigned long MMWAVE_DEBOUNCE_OFF_MS = 2500;
+static const unsigned long MMWAVE_STALE_MS = 8000;
+static const float MMWAVE_FILTER_ALPHA = 0.55f;
+static const float MMWAVE_FILTER_DECAY = 0.78f; // faster decay when target lost
+
+// Logic-layer presence fusion (smooths binary sensor_presence for lighting)
+static const float PRESENCE_RISE_RATE = 0.40f;
+static const float PRESENCE_FALL_RATE = 0.07f;
+static const float PRESENCE_ENTER_LEVEL = 0.30f;
+static const float PRESENCE_EXIT_LEVEL = 0.10f;
+static const unsigned long PRESENCE_EXIT_HOLD_MS = 500;
 
 static const unsigned CANDLE_FRAME_MS = 25;
 static const uint8_t CANDLE_SPEED = 96;
@@ -96,16 +115,21 @@ void handle_mode_buttons(ButtonEvent e);
 void update_state();
 bool user_is_present();
 void update_spa_session();
+void update_presence_session();
+bool visual_is_lit();
+uint8_t presence_fade_mul();
 void toggle_spa_candle();
 void compute_modulation();
 void update_mode_button_pending();
+void update_t2_hold();
 void update_daynight_schedule();
 
 void schedule_init();
 bool schedule_time_valid();
 int schedule_local_hour();
 int schedule_local_minutes();
-void spa_schedule_targets(int minutes, uint8_t* out_brightness, CRGB* out_color);
+float schedule_local_minutes_f();
+void spa_schedule_targets(float minutes, uint8_t* out_brightness, CRGB* out_color);
 void spa_apply_schedule_defaults_now();
 
 void showcase_reset();
@@ -126,6 +150,8 @@ void spa_tuning_update(int16_t enc1_delta, int16_t enc2_delta, bool t1_held);
 uint8_t spa_brightness_val();
 uint8_t spa_sat_val();
 uint8_t spa_hue_val();
+CRGB spa_base_color();
+void spa_schedule_tick();
 void update_spa_inputs();
 
 // --- Render layer (no input reads, no state mutation) ---
@@ -161,10 +187,6 @@ unsigned long get_mmwave_debounce_ms();
 // Internal implementations (src/inputs/)
 void init_encoders_impl();
 void init_buttons_impl();
-#ifdef INPUT_DEBUG
-void debug_buttons_impl();
-void debug_encoders_impl();
-#endif
 void init_mmwave_impl();
 void read_mmwave_impl();
 void poll_encoders_impl();

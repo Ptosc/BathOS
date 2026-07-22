@@ -28,5 +28,7 @@ void render_spa(SpaPhase phase) {
     return;
   }
 
-  fill_solid(leds, NUMPIXELS, CHSV(spa_hue_val(), spa_sat_val(), spa_brightness_val()));
+  CRGB c = spa_base_color();
+  c.nscale8_video(spa_brightness_val());
+  fill_solid(leds, NUMPIXELS, c);
 }

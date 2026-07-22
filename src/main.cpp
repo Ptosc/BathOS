@@ -21,8 +21,8 @@ void setup() {
   delay(500);
   Serial.println("BOOT");
 
-  FastLED.addLeds<WS2812B, PIN, GRB>(leds, NUMPIXELS);
-  FastLED.addLeds<WS2812B, STATUS_PIN, GRB>(status_led, STATUS_LED_COUNT);
+  FastLED.addLeds<WS2812B, PIN, COLOR_ORDER>(leds, NUMPIXELS);
+  FastLED.addLeds<WS2812B, STATUS_PIN, COLOR_ORDER>(status_led, STATUS_LED_COUNT);
   FastLED.setBrightness(255);
   FastLED.clear(true);
 
@@ -41,21 +41,24 @@ static void apply_brightness(uint8_t brightness) {
 void loop() {
   poll_inputs();
   handle_mode_buttons(poll_buttons());
+  update_t2_hold();
   update_mode_button_pending();
 
   update_state();
-  update_spa_session();
+  update_presence_session();
   update_daynight_schedule();
+  if (mode == MODE_SPA) {
+    spa_schedule_tick();
+  }
   compute_modulation();
 
-  const bool active = user_is_present();
   update_showcase_inputs();
   update_canvas_inputs();
   update_spa_inputs();
 
   update_status();
 
-  const VisualState target = {mode, spa_phase, active};
+  const VisualState target = {mode, spa_phase, visual_is_lit()};
 
   transition_begin_if_changed(target, last_unscaled);
 
@@ -73,6 +76,13 @@ void loop() {
   }
 
   apply_brightness(mod.brightness);
+
+  const uint8_t fade_mul = presence_fade_mul();
+  if (fade_mul < 255) {
+    for (int i = 0; i < NUMPIXELS; i++) {
+      leds[i].nscale8_video(fade_mul);
+    }
+  }
 
   FastLED.show();
   poll_encoders_impl();

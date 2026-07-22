@@ -7,13 +7,86 @@ static long last_showcase_enc1 = 0;
 static long last_showcase_enc2 = 0;
 static long last_canvas_enc1 = 0;
 static long last_canvas_enc2 = 0;
-static int schedule_last_hour = -1;
+static bool presence_fading = false;
+static uint8_t presence_fade_level = 255;
+static unsigned long presence_fade_last_ms = 0;
 
-void update_spa_session() {
+static void reset_presence_fade() {
+  presence_fading = false;
+  presence_fade_level = 255;
+  presence_fade_last_ms = millis();
+}
+
+static void step_presence_fade_level(unsigned long dt, bool ramp_up) {
+  if (dt == 0) return;
+
+  const unsigned long span = ramp_up ? PRESENCE_FADE_IN_MS : PRESENCE_FADE_OUT_MS;
+  unsigned long step = (255UL * dt) / span;
+  if (step == 0) step = 1;
+
+  if (ramp_up) {
+    const uint16_t next = (uint16_t)presence_fade_level + step;
+    presence_fade_level = (next >= 255) ? 255 : (uint8_t)next;
+    return;
+  }
+
+  presence_fade_level = (presence_fade_level > step) ? presence_fade_level - step : 0;
+}
+
+static void update_presence_fade_level(bool present) {
+  const unsigned long now = millis();
+  if (presence_fade_last_ms == 0) presence_fade_last_ms = now;
+
+  unsigned long dt = now - presence_fade_last_ms;
+  presence_fade_last_ms = now;
+  if (dt > 50) dt = 50;
+
+  if (present) {
+    if (presence_fade_level < 255) {
+      step_presence_fade_level(dt, true);
+    }
+    return;
+  }
+
+  if (mode == MODE_SPA && spa_phase == SPA_NONE) return;
+  if (mode != MODE_SPA && mode != MODE_SHOWCASE && mode != MODE_CANVAS) return;
+  if (mode != MODE_SPA && presence_fade_level == 0) return;
+
+  if (presence_fade_level > 0) {
+    step_presence_fade_level(dt, false);
+  }
+}
+
+static void update_spa_session_for_presence(bool present) {
+  if (present) {
+    presence_fading = (presence_fade_level < 255);
+    if (spa_phase == SPA_NONE) {
+      spa_phase = SPA_BASE;
+      presence_fade_level = 255;
+      presence_fading = false;
+      spa_apply_schedule_defaults_now();
+    }
+    update_presence_fade_level(true);
+    return;
+  }
+
+  if (spa_phase == SPA_NONE) return;
+
+  presence_fading = true;
+  update_presence_fade_level(false);
+
+  if (presence_fade_level == 0) {
+    presence_fading = false;
+    spa_phase = SPA_NONE;
+    spa_candle_reset();
+  }
+}
+
+void update_presence_session() {
   const bool present = user_is_present();
-  const bool in_spa = (mode == MODE_SPA);
 
-  if (!in_spa || !present) {
+  if (mode == MODE_OFF) {
+    reset_presence_fade();
     if (spa_phase != SPA_NONE) {
       spa_phase = SPA_NONE;
       spa_candle_reset();
@@ -21,9 +94,44 @@ void update_spa_session() {
     return;
   }
 
-  if (spa_phase == SPA_NONE) {
-    spa_phase = SPA_BASE;
+  if (mode == MODE_SPA) {
+    update_spa_session_for_presence(present);
+    return;
   }
+
+  if (mode == MODE_SHOWCASE || mode == MODE_CANVAS) {
+    if (present) {
+      presence_fading = (presence_fade_level < 255);
+      update_presence_fade_level(true);
+      return;
+    }
+
+    if (presence_fade_level == 0) return;
+
+    presence_fading = true;
+    update_presence_fade_level(false);
+    return;
+  }
+}
+
+void update_spa_session() {
+  update_presence_session();
+}
+
+bool visual_is_lit() {
+  if (user_is_present()) return true;
+  if (mode == MODE_SPA && spa_phase != SPA_NONE) return true;
+  if ((mode == MODE_SHOWCASE || mode == MODE_CANVAS) && presence_fade_level > 0) return true;
+  return false;
+}
+
+uint8_t presence_fade_mul() {
+  if (mode == MODE_OFF) return 255;
+  if (mode == MODE_SPA && spa_phase == SPA_NONE && !user_is_present()) return 255;
+  if ((mode == MODE_SHOWCASE || mode == MODE_CANVAS) && presence_fade_level == 0 && !user_is_present()) {
+    return 255;
+  }
+  return presence_fade_level;
 }
 
 void toggle_spa_candle() {
@@ -42,12 +150,18 @@ void toggle_spa_candle() {
 static void handle_mode_change() {
   if (mode == last_mode) return;
 
+  if (last_mode == MODE_SPA && mode != MODE_SPA) {
+    spa_phase = SPA_NONE;
+    spa_candle_reset();
+  }
+
   if (mode == MODE_SPA) {
     last_spa_enc1 = get_encoder1_pos();
     last_spa_enc2 = get_encoder2_pos();
     spa_apply_schedule_defaults_now();
     if (user_is_present()) {
       spa_phase = SPA_BASE;
+      presence_fade_level = 255;
     } else {
       spa_phase = SPA_NONE;
     }
@@ -58,11 +172,23 @@ static void handle_mode_change() {
     showcase_reset();
     last_showcase_enc1 = get_encoder1_pos();
     last_showcase_enc2 = get_encoder2_pos();
+    presence_fade_level = user_is_present() ? 255 : 0;
+    presence_fade_last_ms = millis();
+    presence_fading = false;
   }
 
   if (mode == MODE_CANVAS) {
     last_canvas_enc1 = get_encoder1_pos();
     last_canvas_enc2 = get_encoder2_pos();
+    presence_fade_level = user_is_present() ? 255 : 0;
+    presence_fade_last_ms = millis();
+    presence_fading = false;
+  }
+
+  if (mode == MODE_OFF) {
+    reset_presence_fade();
+    spa_phase = SPA_NONE;
+    spa_candle_reset();
   }
 
   last_mode = mode;
@@ -125,30 +251,20 @@ void update_daynight_schedule() {
   const bool session_start = present && !was_present;
   was_present = present;
 
-  if (!present) return;
-
-  const int hour = schedule_local_hour();
-  if (hour < 0) return;
-
-  const bool hour_changed = (schedule_last_hour != hour);
-  schedule_last_hour = hour;
-
-  if (!hour_changed && !session_start) return;
+  if (!session_start) return;
 
   if (mode == MODE_OFF) {
     mode = MODE_SPA;
     handle_mode_change();
-    return;
-  }
-
-  if (mode == MODE_SPA) {
-    spa_apply_schedule_defaults_now();
   }
 }
 
 static const unsigned long T2_DOUBLE_CLICK_MS = 400;
+static const unsigned long T2_HOLD_MS = 700;
 static unsigned long t2_last_click_ms = 0;
 static bool t2_pending_single = false;
+static unsigned long t2_hold_start_ms = 0;
+static bool t2_hold_fired = false;
 
 static void cycle_light_mode() {
   if (mode == MODE_OFF) {
@@ -161,6 +277,22 @@ static void cycle_light_mode() {
     mode = MODE_SPA;
   }
   handle_mode_change();
+}
+
+static void apply_always_on_wake() {
+  if (mode == MODE_OFF) {
+    mode = MODE_SPA;
+    handle_mode_change();
+    return;
+  }
+
+  if (mode == MODE_SPA && spa_phase == SPA_NONE) {
+    spa_phase = SPA_BASE;
+    presence_fade_level = 255;
+    presence_fading = false;
+    spa_apply_schedule_defaults_now();
+    spa_candle_reset();
+  }
 }
 
 static bool handle_t2_click() {
@@ -181,10 +313,36 @@ static bool handle_t2_click() {
 
 void update_mode_button_pending() {
   if (!t2_pending_single) return;
+  if (t2_hold_fired) return;
   if (millis() - t2_last_click_ms <= T2_DOUBLE_CLICK_MS) return;
 
   t2_pending_single = false;
   cycle_light_mode();
+}
+
+void update_t2_hold() {
+  if (button_is_held(BUTTON_T2)) {
+    if (t2_hold_start_ms == 0) {
+      t2_hold_start_ms = millis();
+      return;
+    }
+    if (t2_hold_fired) return;
+    if (millis() - t2_hold_start_ms < T2_HOLD_MS) return;
+
+    t2_hold_fired = true;
+    t2_pending_single = false;
+    always_on = !always_on;
+    if (always_on) {
+      apply_always_on_wake();
+      trigger_zone(1, CRGB(0, 220, 0));
+    } else {
+      trigger_zone(1, CRGB(0, 90, 0));
+    }
+    return;
+  }
+
+  t2_hold_start_ms = 0;
+  t2_hold_fired = false;
 }
 
 void handle_mode_buttons(ButtonEvent e) {
@@ -194,6 +352,7 @@ void handle_mode_buttons(ButtonEvent e) {
       break;
 
     case BUTTON_T2:
+      if (t2_hold_fired) break;
       if (!handle_t2_click()) {
         trigger_zone(1, CRGB::Green);
       }
