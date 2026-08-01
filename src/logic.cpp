@@ -10,7 +10,7 @@ static long last_canvas_enc2 = 0;
 static bool presence_fading = false;
 static uint8_t presence_fade_level = 255;
 static unsigned long presence_fade_last_ms = 0;
-static const CRGB NIGHT_CANVAS_COLOR(255, 40, 0);
+static const CRGB NIGHT_CANVAS_COLOR(255, 20, 0);
 static const uint8_t NIGHT_CANVAS_BRIGHTNESS_RAW = 80; // Gamma-mapped to about 20/255.
 static uint8_t brightness_before_night = 200;
 static bool night_brightness_active = false;

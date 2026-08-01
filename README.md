@@ -74,7 +74,7 @@ Der Plan läuft nur mit gültiger NTP-Zeit (WiFi erforderlich). Farbe und Hellig
 | 08:00–16:00 | Tag: volle Helligkeit, warmes Tageslicht |
 | 16:00–21:00 | Abend: zunehmend wärmer und gedimmter |
 | 21:00–22:00 | Übergang auf Nacht-minimal |
-| 22:00–05:00 | Nacht: Canvas in Candle-Rotorange `(255,40,0)` bei etwa 20/255 Helligkeit |
+| 22:00–05:00 | Nacht: Canvas in tiefem Rotorange `(255,20,0)` bei etwa 20/255 Helligkeit |
 
 Ankerfarben (RGB): Morgen `(255,215,170)` · Tag `(255,175,90)` · Abend `(255,85,12)` · Nacht `(255,50,5)`
 
