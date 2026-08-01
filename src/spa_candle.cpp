@@ -8,6 +8,9 @@ struct CandlePixel {
 
 static CandlePixel candle_pixels[NUMPIXELS];
 static uint8_t flicker_smoothed[NUMPIXELS];
+static uint8_t global_flicker = 180;
+static uint8_t global_flicker_target = 220;
+static uint8_t global_flicker_step = 3;
 static uint32_t last_tick_ms = 0;
 
 static unsigned candle_speed_factor(uint8_t speed) {
@@ -58,11 +61,32 @@ static void candle_tick(CandlePixel& p, unsigned valrange, unsigned rndval, unsi
   }
 }
 
+static void candle_tick_global() {
+  bool target_reached = false;
+  if (global_flicker_target > global_flicker) {
+    global_flicker = qadd8(global_flicker, global_flicker_step);
+    target_reached = global_flicker >= global_flicker_target;
+  } else {
+    global_flicker = qsub8(global_flicker, global_flicker_step);
+    target_reached = global_flicker <= global_flicker_target;
+  }
+
+  if (target_reached) {
+    // A shared 80..255 envelope remains visible after indirect light has
+    // averaged the smaller, independent fluctuations of all pixels.
+    global_flicker_target = 80 + random8(176);
+    global_flicker_step = 2 + random8(5);
+  }
+}
+
 void spa_candle_reset() {
   for (int i = 0; i < NUMPIXELS; i++) {
     candle_pixels[i] = {0, 0, 0};
     flicker_smoothed[i] = 0;
   }
+  global_flicker = 180;
+  global_flicker_target = 220;
+  global_flicker_step = 3;
   last_tick_ms = 0;
 }
 
@@ -80,9 +104,12 @@ void render_spa_candle(CRGB* out, CRGB bright, CRGB dim) {
     }
 
     candle_blur_flicker();
+    candle_tick_global();
   }
 
   for (int i = 0; i < NUMPIXELS; i++) {
-    out[i] = blend(dim, bright, flicker_smoothed[i]);
+    const uint8_t combined = (uint8_t)(
+        ((uint16_t)global_flicker * 3 + (uint16_t)flicker_smoothed[i]) / 4);
+    out[i] = blend(dim, bright, combined);
   }
 }

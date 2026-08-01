@@ -28,7 +28,7 @@ BathroomOS schaltet das Licht bei Anwesenheit ein, dimmt es langsam aus, wenn ni
 | Phase | Beschreibung |
 |-------|--------------|
 | **Spa Base** | Einheitliche Farbe aus dem Tagesplan, direkt als RGB gerendert |
-| **Spa Candle** | WLED-inspirierter Kerzen-Effekt in der eingestellten Farbe |
+| **Spa Candle** | WLED-inspirierter Kerzen-Effekt mit gemeinsamem, auch bei indirektem Licht sichtbarem Flackern |
 
 ## Bedienung
 
