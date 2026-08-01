@@ -4,6 +4,12 @@ static float intensity_smooth = 0.0f;
 static bool user_occupied = false;
 static unsigned long absent_hold_start_ms = 0;
 
+static float map_brightness(uint8_t raw) {
+  const float GAMMA = 2.2f;
+  const float x = (float)raw / 255.0f;
+  return powf(x, GAMMA) * 255.0f;
+}
+
 static void update_presence_signal() {
   if (sensor_presence > 0.5f) {
     presence += (1.0f - presence) * PRESENCE_RISE_RATE;
@@ -54,6 +60,12 @@ bool user_is_present() {
   return always_on || user_occupied;
 }
 
+void set_global_brightness_immediate(uint8_t raw) {
+  g_brightness_raw = raw;
+  intensity_smooth = map_brightness(raw);
+  mod.brightness = (uint8_t)constrain((int)(intensity_smooth + 0.5f), 0, 255);
+}
+
 void compute_modulation() {
   if (mode == MODE_SPA) {
     mod.brightness = 255;
@@ -62,12 +74,10 @@ void compute_modulation() {
     return;
   }
 
-  const float GAMMA = 2.2f;
   const float ALPHA = 0.08f;
   const float MAX_DELTA = 8.0f;
 
-  const float x = (float)g_brightness_raw / 255.0f;
-  const float mapped = powf(x, GAMMA) * 255.0f;
+  const float mapped = map_brightness(g_brightness_raw);
 
   intensity_smooth += (mapped - intensity_smooth) * ALPHA;
 

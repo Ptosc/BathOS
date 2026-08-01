@@ -12,6 +12,8 @@ static float hue = CANVAS_DEFAULT_HUE;
 static float hue_target = CANVAS_DEFAULT_HUE;
 static float sat = CANVAS_DEFAULT_SAT;
 static float sat_target = CANVAS_DEFAULT_SAT;
+static CRGB canvas_rgb = CHSV(CANVAS_DEFAULT_HUE, CANVAS_DEFAULT_SAT, CANVAS_VAL);
+static bool canvas_uses_rgb_default = false;
 
 static float clamp_f(float v, float lo, float hi) {
   if (v < lo) return lo;
@@ -44,6 +46,31 @@ static float wrap_hue(float h) {
   return h;
 }
 
+static void canvas_rgb_to_hsv(CRGB rgb, float* out_h, float* out_s) {
+  const uint8_t maxc = max(rgb.r, max(rgb.g, rgb.b));
+  const uint8_t minc = min(rgb.r, min(rgb.g, rgb.b));
+  const uint8_t delta = maxc - minc;
+
+  if (maxc == 0 || delta == 0) {
+    *out_h = 0.0f;
+    *out_s = 0.0f;
+    return;
+  }
+
+  *out_s = 255.0f * (float)delta / (float)maxc;
+
+  float h;
+  if (maxc == rgb.r) {
+    h = 42.0f * (float)((int)rgb.g - (int)rgb.b) / (float)delta;
+  } else if (maxc == rgb.g) {
+    h = 42.0f + 42.0f * (float)((int)rgb.b - (int)rgb.r) / (float)delta;
+  } else {
+    h = 85.0f + 42.0f * (float)((int)rgb.r - (int)rgb.g) / (float)delta;
+  }
+  if (h < 0.0f) h += 256.0f;
+  *out_h = h;
+}
+
 uint8_t canvas_hue_val() { return (uint8_t)(wrap_hue(hue_target) + 0.5f); }
 
 void canvas_apply_defaults(uint8_t default_hue, uint8_t default_sat) {
@@ -51,14 +78,27 @@ void canvas_apply_defaults(uint8_t default_hue, uint8_t default_sat) {
   sat_target = (float)default_sat;
   hue = hue_target;
   sat = sat_target;
+  canvas_uses_rgb_default = false;
+}
+
+void canvas_apply_defaults_rgb(CRGB color) {
+  canvas_rgb = color;
+  canvas_rgb_to_hsv(color, &hue, &sat);
+  hue_target = hue;
+  sat_target = sat;
+  canvas_uses_rgb_default = true;
 }
 
 void canvas_tuning_tick() {
+  if (canvas_uses_rgb_default) return;
   hue = lerp_hue_toward(hue, hue_target, CANVAS_SMOOTH);
   sat = lerp_toward(sat, sat_target, CANVAS_SMOOTH);
 }
 
 void canvas_tuning_update(int16_t enc1_delta, int16_t enc2_delta) {
+  if (enc1_delta != 0 || enc2_delta != 0) {
+    canvas_uses_rgb_default = false;
+  }
   if (enc1_delta != 0) {
     sat_target = clamp_f(sat_target + enc1_delta * CANVAS_SAT_STEP, 0.0f, 255.0f);
   }
@@ -69,5 +109,9 @@ void canvas_tuning_update(int16_t enc1_delta, int16_t enc2_delta) {
 
 void render_canvas(unsigned long now_ms) {
   (void)now_ms;
+  if (canvas_uses_rgb_default) {
+    fill_solid(leds, NUMPIXELS, canvas_rgb);
+    return;
+  }
   fill_solid(leds, NUMPIXELS, CHSV((uint8_t)(wrap_hue(hue) + 0.5f), (uint8_t)(sat + 0.5f), CANVAS_VAL));
 }

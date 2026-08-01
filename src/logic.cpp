@@ -10,6 +10,10 @@ static long last_canvas_enc2 = 0;
 static bool presence_fading = false;
 static uint8_t presence_fade_level = 255;
 static unsigned long presence_fade_last_ms = 0;
+static const CRGB NIGHT_CANVAS_COLOR(255, 40, 0);
+static const uint8_t NIGHT_CANVAS_BRIGHTNESS_RAW = 80; // Gamma-mapped to about 20/255.
+static uint8_t brightness_before_night = 200;
+static bool night_brightness_active = false;
 
 static void reset_presence_fade() {
   presence_fading = false;
@@ -247,13 +251,37 @@ void update_daynight_schedule() {
   if (!schedule_time_valid()) return;
 
   const bool present = user_is_present();
-  static bool was_present = false;
-  const bool session_start = present && !was_present;
-  was_present = present;
+  static bool default_pending = true;
 
-  if (!session_start) return;
+  if (!present) {
+    if (!visual_is_lit()) default_pending = true;
+    return;
+  }
+  if (!default_pending) return;
 
-  if (mode == MODE_OFF) {
+  const int minutes = schedule_local_minutes();
+  if (minutes < 0) return;
+  default_pending = false;
+
+  if (schedule_is_night(minutes)) {
+    if (!night_brightness_active) {
+      brightness_before_night = g_brightness_raw;
+      night_brightness_active = true;
+    }
+    set_global_brightness_immediate(NIGHT_CANVAS_BRIGHTNESS_RAW);
+    canvas_apply_defaults_rgb(NIGHT_CANVAS_COLOR);
+    if (mode != MODE_CANVAS) {
+      mode = MODE_CANVAS;
+      handle_mode_change();
+    }
+    return;
+  }
+
+  if (night_brightness_active) {
+    set_global_brightness_immediate(brightness_before_night);
+    night_brightness_active = false;
+  }
+  if (mode != MODE_SPA) {
     mode = MODE_SPA;
     handle_mode_change();
   }

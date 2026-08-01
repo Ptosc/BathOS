@@ -111,6 +111,10 @@ float schedule_local_minutes_f() {
   return (float)(t.tm_hour * 60 + t.tm_min) + (float)t.tm_sec / 60.0f;
 }
 
+bool schedule_is_night(int minutes) {
+  return minutes >= 22 * 60 || minutes < 5 * 60;
+}
+
 void spa_schedule_targets(float minutes, uint8_t* out_brightness, CRGB* out_color) {
   const int m05 = 5 * 60;
   const int m08 = 8 * 60;

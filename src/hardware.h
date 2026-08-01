@@ -120,6 +120,7 @@ bool visual_is_lit();
 uint8_t presence_fade_mul();
 void toggle_spa_candle();
 void compute_modulation();
+void set_global_brightness_immediate(uint8_t raw);
 void update_mode_button_pending();
 void update_t2_hold();
 void update_daynight_schedule();
@@ -129,6 +130,7 @@ bool schedule_time_valid();
 int schedule_local_hour();
 int schedule_local_minutes();
 float schedule_local_minutes_f();
+bool schedule_is_night(int minutes);
 void spa_schedule_targets(float minutes, uint8_t* out_brightness, CRGB* out_color);
 void spa_apply_schedule_defaults_now();
 
@@ -137,6 +139,7 @@ void showcase_update(int16_t enc1_delta, int16_t enc2_delta, unsigned long now_m
 void update_showcase_inputs();
 
 void canvas_apply_defaults(uint8_t default_hue, uint8_t default_sat);
+void canvas_apply_defaults_rgb(CRGB color);
 void canvas_tuning_tick();
 void canvas_tuning_update(int16_t enc1_delta, int16_t enc2_delta);
 void render_canvas(unsigned long now_ms);
