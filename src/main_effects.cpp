@@ -10,6 +10,12 @@ void render_visual_state_to(CRGB* buf, const VisualState& vs) {
     return;
   }
 
+  // Stateful effects must continue from their own target frame while a
+  // transition is being blended into the displayed LED buffer.
+  if (buf != leds) {
+    for (int i = 0; i < NUMPIXELS; i++) leds[i] = buf[i];
+  }
+
   switch (vs.mode) {
     case MODE_SPA:
       render_spa(vs.spa_phase);

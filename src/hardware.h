@@ -27,7 +27,7 @@ extern CRGB leds[NUMPIXELS];
 extern CRGB status_led[STATUS_LED_COUNT];
 extern CRGB prev_frame[NUMPIXELS];
 extern CRGB new_frame[NUMPIXELS];
-extern CRGB last_unscaled[NUMPIXELS];
+extern CRGB last_displayed[NUMPIXELS];
 
 // Sensor state (written by Input layer, read by Logic/Render callers)
 extern int raw_distance;
@@ -166,7 +166,7 @@ void trigger_zone(uint8_t zone, CRGB color);
 void trigger_status_shutdown();
 
 // --- Transitions ---
-void transition_begin_if_changed(const VisualState& target, const CRGB* prev_unscaled);
+void transition_begin_if_changed(const VisualState& target, const CRGB* last_displayed_frame);
 bool transition_is_active();
 void transition_output(CRGB* dst);
 VisualState transition_get_displayed_state();

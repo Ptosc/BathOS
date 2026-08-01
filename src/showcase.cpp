@@ -42,6 +42,7 @@ static float pos_right = 0.0f;
 static unsigned long last_ms = 0;
 static uint8_t collision_flash = 0;
 static unsigned long last_collision_ms = 0;
+static bool first_frame = true;
 
 static float showcase_clamp_speed(float v) {
   if (v < SHOWCASE_SPEED_MIN) return SHOWCASE_SPEED_MIN;
@@ -162,6 +163,7 @@ void showcase_reset() {
   last_ms = 0;
   collision_flash = 0;
   last_collision_ms = 0;
+  first_frame = true;
 }
 
 void showcase_update(int16_t enc1_delta, int16_t enc2_delta, unsigned long now_ms) {
@@ -200,7 +202,12 @@ void render_showcase() {
   const int head_left = (int)(pos_left + 0.5f);
   const int head_right = (int)(pos_right + 0.5f);
 
-  fadeToBlackBy(leds, NUMPIXELS, showcase_fade_amount(speed));
+  if (first_frame) {
+    fill_solid(leds, NUMPIXELS, CRGB::Black);
+    first_frame = false;
+  } else {
+    fadeToBlackBy(leds, NUMPIXELS, showcase_fade_amount(speed));
+  }
 
   showcase_draw_trail(pos_left, palette.hue_a, 1);
   showcase_draw_trail(pos_right, palette.hue_b, -1);

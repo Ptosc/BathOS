@@ -31,10 +31,20 @@ void setup() {
   schedule_init();
 }
 
-static void apply_brightness(uint8_t brightness) {
+static void apply_brightness(CRGB* frame, uint8_t brightness) {
   if (brightness >= 255) return;
   for (int i = 0; i < NUMPIXELS; i++) {
-    leds[i].nscale8_video(brightness);
+    frame[i].nscale8_video(brightness);
+  }
+}
+
+static void apply_output_scaling(CRGB* frame) {
+  apply_brightness(frame, mod.brightness);
+
+  const uint8_t fade_mul = presence_fade_mul();
+  if (fade_mul >= 255) return;
+  for (int i = 0; i < NUMPIXELS; i++) {
+    frame[i].nscale8_video(fade_mul);
   }
 }
 
@@ -60,28 +70,21 @@ void loop() {
 
   const VisualState target = {mode, spa_phase, visual_is_lit()};
 
-  transition_begin_if_changed(target, last_unscaled);
+  transition_begin_if_changed(target, last_displayed);
 
   const bool was_transitioning = transition_is_active();
 
   if (was_transitioning) {
     render_visual_state_to(new_frame, target);
+    apply_output_scaling(new_frame);
     transition_output(leds);
   } else {
     render_visual_state_to(leds, target);
+    apply_output_scaling(leds);
   }
 
   for (int i = 0; i < NUMPIXELS; i++) {
-    last_unscaled[i] = leds[i];
-  }
-
-  apply_brightness(mod.brightness);
-
-  const uint8_t fade_mul = presence_fade_mul();
-  if (fade_mul < 255) {
-    for (int i = 0; i < NUMPIXELS; i++) {
-      leds[i].nscale8_video(fade_mul);
-    }
+    last_displayed[i] = leds[i];
   }
 
   FastLED.show();

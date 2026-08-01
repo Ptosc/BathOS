@@ -6,7 +6,7 @@ CRGB leds[NUMPIXELS];
 CRGB status_led[STATUS_LED_COUNT];
 CRGB prev_frame[NUMPIXELS];
 CRGB new_frame[NUMPIXELS];
-CRGB last_unscaled[NUMPIXELS];
+CRGB last_displayed[NUMPIXELS];
 
 int raw_distance = -1;
 int filtered_distance = -1;

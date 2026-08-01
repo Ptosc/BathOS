@@ -43,10 +43,10 @@ static void capture_frame(CRGB* dst, const CRGB* src) {
   for (int i = 0; i < NUMPIXELS; i++) dst[i] = src[i];
 }
 
-void transition_begin_if_changed(const VisualState& target, const CRGB* prev_unscaled) {
+void transition_begin_if_changed(const VisualState& target, const CRGB* last_displayed_frame) {
   if (transitioning) {
     if (!visual_state_equals(transition_target, target)) {
-      capture_frame(prev_frame, prev_unscaled);
+      capture_frame(prev_frame, last_displayed_frame);
       transition_target = target;
       transition_duration_ms = transition_ms_for(displayed_state, target);
       transition_start_ms = millis();
@@ -56,7 +56,7 @@ void transition_begin_if_changed(const VisualState& target, const CRGB* prev_uns
 
   if (visual_state_equals(displayed_state, target)) return;
 
-  capture_frame(prev_frame, prev_unscaled);
+  capture_frame(prev_frame, last_displayed_frame);
   transition_target = target;
   transition_duration_ms = transition_ms_for(displayed_state, target);
   transition_start_ms = millis();
