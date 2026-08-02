@@ -52,8 +52,8 @@ void loop() {
   }
   compute_modulation();
 
-  update_showcase_inputs();
   update_canvas_inputs();
+  update_rainbow_inputs();
   update_spa_inputs();
 
   update_status();
@@ -71,18 +71,20 @@ void loop() {
     render_visual_state_to(leds, target);
   }
 
-  for (int i = 0; i < NUMPIXELS; i++) {
-    last_unscaled[i] = leds[i];
-  }
-
-  apply_brightness(mod.brightness);
-
+  // Bake presence fade into the snapshot so a later off-transition cannot
+  // briefly restore the full-brightness pre-fade frame (end-of-fade flash).
   const uint8_t fade_mul = presence_fade_mul();
   if (fade_mul < 255) {
     for (int i = 0; i < NUMPIXELS; i++) {
       leds[i].nscale8_video(fade_mul);
     }
   }
+
+  for (int i = 0; i < NUMPIXELS; i++) {
+    last_unscaled[i] = leds[i];
+  }
+
+  apply_brightness(mod.brightness);
 
   FastLED.show();
   poll_encoders_impl();

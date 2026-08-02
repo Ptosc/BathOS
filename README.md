@@ -2,12 +2,12 @@
 
 Präsenzgesteuerte LED-Beleuchtung fürs Bad — ESP32-Firmware für eine WS2812B-Leiste mit mmWave-Sensor, zwei Rotary-Encodern und einem zeitbasierten Tagesplan.
 
-BathroomOS schaltet das Licht bei Anwesenheit ein, dimmt es langsam aus, wenn niemand mehr da ist, und passt Farbe und Helligkeit über den Tag an. Drei Zusatzmodi (Showcase, Canvas) bieten dekoratives Licht und freie Farbwahl.
+BathroomOS schaltet das Licht bei Anwesenheit ein, dimmt es langsam aus, wenn niemand mehr da ist, und passt Farbe und Helligkeit über den Tag an. Canvas und Rainbow bieten freie Farbwahl bzw. dekorativen Verlauf.
 
 ## Features
 
 - **Präsenzerkennung** — mmWave-Radar (LD2410 o. Ä.) mit asymmetrischer Glättung und Hysterese
-- **Spa-Modus** — Hauptmodus mit warmem Tagesplan, Kerzenflackern und Encoder-Feintuning
+- **Spa-Modus** — Hauptmodus mit warmem Tagesplan und Encoder-Feintuning
 - **Sanfter Tagesplan** — Farbe und Helligkeit folgen der Uhrzeit kontinuierlich (NTP, CET/CEST)
 - **Langsames Ausklingen** — nach Verlassen des Raums dimmt das Licht in allen aktiven Modi über **3 Minuten** aus
 - **Sanftes Wieder-Ein** — Rückkehr während des Fade-Outs: Helligkeit fährt über **5 Sekunden** wieder hoch
@@ -19,29 +19,28 @@ BathroomOS schaltet das Licht bei Anwesenheit ein, dimmt es langsam aus, wenn ni
 
 | Modus | Beschreibung |
 |-------|--------------|
-| **Spa** | Warme Volltonbeleuchtung nach Tagesplan. Optional Kerzenflackern (T3). Encoder justieren Helligkeit, Farbton und Sättigung. |
-| **Showcase** | Zwei gegenläufige Kometen mit Kollisionseffekt. Enc1 = Geschwindigkeit, Enc2 = Farbpalette. |
-| **Canvas** | Gleichmäßige Volltonfarbe. Enc1 = Sättigung, Enc2 = Farbton. |
+| **Spa** | Warme Volltonbeleuchtung nach Tagesplan. Enc1 = Helligkeit, Enc2 = Hue, T2+Enc2 = Sättigung. |
+| **Canvas** | Gleichmäßige Volltonfarbe. Enc1 = Helligkeit, Enc2 = Hue, T2+Enc2 = Sättigung. |
+| **Rainbow** | Dekorativer Verlauf. Enc1 = Helligkeit, Enc2 = Preset. |
 
 ### Spa-Phasen
 
 | Phase | Beschreibung |
 |-------|--------------|
 | **Spa Base** | Einheitliche Farbe aus dem Tagesplan, direkt als RGB gerendert |
-| **Spa Candle** | WLED-inspirierter Kerzen-Effekt in der eingestellten Farbe |
+| **Spa Candle** | WLED-inspirierter Kerzen-Effekt (nur noch über Defaults/Auto, kein T3-Toggle) |
 
 ## Bedienung
 
 | Eingabe | Funktion |
 |---------|----------|
-| **T2** (kurz) | Modus wechseln: Spa → Showcase → Canvas → Spa … |
-| **T2** (Doppelklick) | Aus — mit roter Status-LED-Animation |
+| **T1** | Vorheriger Modus (Spa ← Canvas ← Rainbow) |
+| **T3** | Nächster Modus; aus OFF: letzter Modus / Spa |
+| **T2** (tippen) | An / Aus |
 | **T2** (halten ~700 ms) | Always On ein/aus — Status-LED leuchtet dauerhaft grün |
-| **T3** | Spa: Base ↔ Candle umschalten |
-| **Enc1** | Spa: Helligkeit · Showcase/Canvas: modusabhängig |
-| **T1 + Enc1** | Spa: Sättigung · Showcase/Canvas: globale Helligkeit |
-| **Enc2** | Spa: Farbton · Showcase/Canvas: modusabhängig |
-| **T1** (kurz) | Visuelles Feedback (rote Status-Zone) |
+| **Enc1** | Helligkeit — Status: warmer weißer Komet |
+| **Enc2** | Spa / Canvas: Hue · Rainbow: Preset — Status: farbiger Komet |
+| **T2 + Enc2** | Spa / Canvas: Sättigung — Status: Magenta-Komet |
 
 Beim ersten Betreten des Raums (oder aus dem Aus-Zustand) startet **Spa**.
 
@@ -50,7 +49,7 @@ Beim ersten Betreten des Raums (oder aus dem Aus-Zustand) startet **Spa**.
 | Einstellung | Verhalten |
 |-------------|-----------|
 | **Enc1 (Helligkeit)** | Überschreibt den Tagesplan für die **aktuelle Präsenz-Session** — auch bei kurzem Rausgehen und Zurückkommen während des Fade-Outs |
-| **Enc2 / T1+Enc1 (Farbe)** | Überschreibt den Tagesplan bis das Licht **vollständig aus** ist (nach 3 min Fade) |
+| **Enc2 / T2+Enc2 (Farbe)** | Überschreibt den Tagesplan bis das Licht **vollständig aus** ist (nach 3 min Fade) |
 | **Nächste Session** | Nach vollständigem Auto-Off werden Tagesplan-Helligkeit und -Farbe neu gesetzt |
 
 ## Präsenz & Fade
@@ -58,7 +57,7 @@ Beim ersten Betreten des Raums (oder aus dem Aus-Zustand) startet **Spa**.
 | Situation | Verhalten |
 |-----------|-----------|
 | Raum betreten | Licht geht an (Spa startet aus Aus-Modus) |
-| Raum verlassen | 3 Minuten Fade-Out in Spa, Showcase und Canvas |
+| Raum verlassen | 3 Minuten Fade-Out in Spa, Canvas und Rainbow |
 | Während Fade-Out zurück | Sanftes Hochfahren über 5 Sekunden — manuelle Helligkeit bleibt erhalten |
 | Vollständig aus | Nächster Besuch startet mit frischem Tagesplan |
 | Always On | Präsenz wird simuliert — kein Fade-Out |

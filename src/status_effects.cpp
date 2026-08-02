@@ -7,19 +7,34 @@ static const unsigned long SHUTDOWN_STAGGER_MS = 120;
 static const unsigned long SHUTDOWN_FADE_MS = 230;
 static const CRGB SHUTDOWN_COLOR = CHSV(0, 200, 255);
 
+static const unsigned long ENCODER_COMET_HOLD_MS = 180;
+static const unsigned long ENCODER_COMET_FADE_MS = 520;
+static const float ENCODER_COMET_SPEED = 4.5f; // LEDs per second (was 9.5)
+static const float ENCODER_COMET_TRAIL = 2.6f;
+
 struct ZoneEffect {
   CRGB color = CRGB::Black;
   unsigned long triggered_ms = 0;
   bool active = false;
 };
 
+struct EncoderComet {
+  bool active = false;
+  float pos = 0.0f;
+  int8_t dir = 1;
+  float energy = 0.0f;
+  CRGB color = CRGB::White;
+  unsigned long last_pulse_ms = 0;
+  unsigned long last_ms = 0;
+};
+
 static ZoneEffect zones[3];
+static EncoderComet comets[2];
 static bool shutdown_active = false;
 static unsigned long shutdown_start_ms = 0;
 
 static const int SHUTDOWN_PAIRS[3][2] = {{0, 5}, {1, 4}, {2, 3}};
 
-// Ease-out cubic: stays bright longer, then glows out slowly at the end.
 static uint8_t fade_intensity(unsigned long elapsed) {
   if (elapsed >= ZONE_FADE_MS) return 0;
   float t = (float)elapsed / (float)ZONE_FADE_MS;
@@ -66,10 +81,18 @@ static void render_status_shutdown(unsigned long elapsed) {
   }
 }
 
+static void clear_encoder_comets() {
+  for (int i = 0; i < 2; i++) {
+    comets[i].active = false;
+    comets[i].energy = 0.0f;
+  }
+}
+
 void trigger_status_shutdown() {
   shutdown_start_ms = millis();
   shutdown_active = true;
   for (int z = 0; z < 3; z++) zones[z].active = false;
+  clear_encoder_comets();
 }
 
 void trigger_zone(uint8_t zone, CRGB color) {
@@ -77,6 +100,29 @@ void trigger_zone(uint8_t zone, CRGB color) {
   zones[zone].color = color;
   zones[zone].triggered_ms = millis();
   zones[zone].active = true;
+}
+
+void trigger_encoder_feedback(uint8_t encoder, int8_t direction, CRGB color) {
+  if (encoder > 1 || direction == 0 || shutdown_active) return;
+
+  EncoderComet& c = comets[encoder];
+  const unsigned long now = millis();
+  const int8_t dir = (direction > 0) ? 1 : -1;
+
+  if (!c.active || c.energy < 0.08f) {
+    c.pos = (dir > 0) ? 0.0f : (float)(STATUS_LED_COUNT - 1);
+  }
+
+  c.dir = dir;
+  c.color = color;
+  c.energy = 1.0f;
+  c.last_pulse_ms = now;
+  c.last_ms = now;
+  c.active = true;
+  c.pos += (float)dir * 0.45f;
+
+  while (c.pos < 0.0f) c.pos += (float)STATUS_LED_COUNT;
+  while (c.pos >= (float)STATUS_LED_COUNT) c.pos -= (float)STATUS_LED_COUNT;
 }
 
 static CRGB status_base_pixel(int i) {
@@ -102,6 +148,57 @@ static CRGB zone_flash_pixel(CRGB color, uint8_t intensity, uint8_t edge_falloff
   return c;
 }
 
+static float comet_ring_dist(float from, float to, int8_t trail_dir) {
+  float d = (to - from) * (float)trail_dir;
+  if (d < 0.0f) d += (float)STATUS_LED_COUNT;
+  return d;
+}
+
+static void update_and_render_comets(unsigned long now) {
+  for (int e = 0; e < 2; e++) {
+    EncoderComet& c = comets[e];
+    if (!c.active) continue;
+
+    unsigned long dt_ms = now - c.last_ms;
+    if (dt_ms > 40) dt_ms = 40;
+    c.last_ms = now;
+
+    const unsigned long since_pulse = now - c.last_pulse_ms;
+    if (since_pulse > ENCODER_COMET_HOLD_MS) {
+      const unsigned long fade_t = since_pulse - ENCODER_COMET_HOLD_MS;
+      if (fade_t >= ENCODER_COMET_FADE_MS) {
+        c.active = false;
+        c.energy = 0.0f;
+        continue;
+      }
+      const float t = (float)fade_t / (float)ENCODER_COMET_FADE_MS;
+      const float rem = 1.0f - t;
+      c.energy = rem * rem;
+    } else {
+      c.energy = 1.0f;
+    }
+
+    c.pos += (float)c.dir * ENCODER_COMET_SPEED * ((float)dt_ms / 1000.0f);
+    while (c.pos < 0.0f) c.pos += (float)STATUS_LED_COUNT;
+    while (c.pos >= (float)STATUS_LED_COUNT) c.pos -= (float)STATUS_LED_COUNT;
+
+    const int8_t trail_dir = (int8_t)(-c.dir);
+
+    for (int i = 0; i < STATUS_LED_COUNT; i++) {
+      const float dist = comet_ring_dist(c.pos, (float)i, trail_dir);
+      if (dist > ENCODER_COMET_TRAIL) continue;
+
+      const float fall = 1.0f - (dist / ENCODER_COMET_TRAIL);
+      const float bright = c.energy * fall * fall;
+      if (bright < 0.02f) continue;
+
+      CRGB spark = c.color;
+      spark.nscale8_video((uint8_t)(bright * 255.0f + 0.5f));
+      status_led[i] = blend(status_led[i], spark, (uint8_t)(bright * 255.0f + 0.5f));
+    }
+  }
+}
+
 void update_status() {
   const unsigned long now = millis();
 
@@ -120,6 +217,7 @@ void update_status() {
   }
 
   render_status_base();
+  update_and_render_comets(now);
 
   for (int z = 0; z < 3; z++) {
     if (!zones[z].active) continue;
@@ -138,7 +236,7 @@ void update_status() {
 
     for (int i = start; i < end; i++) {
       const uint8_t edge_falloff = (i == start || i == end - 1) ? 180 : 255;
-      const CRGB base = status_base_pixel(i);
+      const CRGB base = status_led[i];
       const CRGB flash = zone_flash_pixel(zones[z].color, intensity, edge_falloff);
       status_led[i] = blend(base, flash, intensity);
     }

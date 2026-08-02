@@ -9,9 +9,8 @@ static long last_brightness_enc1 = 0;
 static bool brightness_enc_synced = false;
 
 static void update_brightness_from_encoder() {
-  if (mode == MODE_SPA) return;
-
-  if (!button_is_held(BUTTON_T1)) {
+  // Spa has its own brightness path (Enc1 → spa_tuning).
+  if (mode == MODE_SPA) {
     brightness_enc_synced = false;
     return;
   }
@@ -29,6 +28,7 @@ static void update_brightness_from_encoder() {
   const int next = (int)g_brightness_raw + delta * BRIGHTNESS_ENC_STEP;
   g_brightness_raw = (uint8_t)constrain(next, 0, 255);
   last_brightness_enc1 = enc1;
+  trigger_encoder_feedback(0, (delta > 0) ? 1 : -1, CHSV(28, 50, 255));
 }
 
 void init_inputs() {

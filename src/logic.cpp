@@ -1,20 +1,59 @@
 #include "hardware.h"
 
 static int last_mode = MODE_OFF;
+static int saved_mode = MODE_SPA;
 static long last_spa_enc1 = 0;
 static long last_spa_enc2 = 0;
-static long last_showcase_enc1 = 0;
-static long last_showcase_enc2 = 0;
 static long last_canvas_enc1 = 0;
 static long last_canvas_enc2 = 0;
+static long last_rainbow_enc1 = 0;
+static long last_rainbow_enc2 = 0;
 static bool presence_fading = false;
 static uint8_t presence_fade_level = 255;
 static unsigned long presence_fade_last_ms = 0;
+static unsigned long presence_reenter_since_ms = 0;
+
+static const unsigned long T2_HOLD_MS = 700;
+static bool t2_press_active = false;
+static unsigned long t2_press_ms = 0;
+static bool t2_hold_fired = false;
+static bool t2_encoder_used = false;
+
+static void note_t2_modifier_used() {
+  if (!button_is_held(BUTTON_T2)) return;
+  t2_encoder_used = true;
+}
 
 static void reset_presence_fade() {
   presence_fading = false;
   presence_fade_level = 255;
   presence_fade_last_ms = millis();
+  presence_reenter_since_ms = 0;
+}
+
+// While fade-out is running, brief sensor blips must not ramp brightness back up.
+static bool presence_cancels_fade(bool present) {
+  if (!present) {
+    presence_reenter_since_ms = 0;
+    return false;
+  }
+  if (!presence_fading || presence_fade_level >= 255) {
+    presence_reenter_since_ms = 0;
+    return true;
+  }
+
+  const unsigned long now = millis();
+  if (presence_reenter_since_ms == 0) {
+    presence_reenter_since_ms = now;
+    return false;
+  }
+  if ((now - presence_reenter_since_ms) < PRESENCE_REENTER_MS) {
+    return false;
+  }
+
+  presence_reenter_since_ms = 0;
+  presence_fading = false;
+  return true;
 }
 
 static void step_presence_fade_level(unsigned long dt, bool ramp_up) {
@@ -49,7 +88,7 @@ static void update_presence_fade_level(bool present) {
   }
 
   if (mode == MODE_SPA && spa_phase == SPA_NONE) return;
-  if (mode != MODE_SPA && mode != MODE_SHOWCASE && mode != MODE_CANVAS) return;
+  if (mode != MODE_SPA && mode != MODE_CANVAS && mode != MODE_RAINBOW) return;
   if (mode != MODE_SPA && presence_fade_level == 0) return;
 
   if (presence_fade_level > 0) {
@@ -58,8 +97,7 @@ static void update_presence_fade_level(bool present) {
 }
 
 static void update_spa_session_for_presence(bool present) {
-  if (present) {
-    presence_fading = (presence_fade_level < 255);
+  if (presence_cancels_fade(present)) {
     if (spa_phase == SPA_NONE) {
       spa_phase = SPA_BASE;
       presence_fade_level = 255;
@@ -77,6 +115,7 @@ static void update_spa_session_for_presence(bool present) {
 
   if (presence_fade_level == 0) {
     presence_fading = false;
+    presence_reenter_since_ms = 0;
     spa_phase = SPA_NONE;
     spa_candle_reset();
   }
@@ -99,9 +138,8 @@ void update_presence_session() {
     return;
   }
 
-  if (mode == MODE_SHOWCASE || mode == MODE_CANVAS) {
-    if (present) {
-      presence_fading = (presence_fade_level < 255);
+  if (mode == MODE_CANVAS || mode == MODE_RAINBOW) {
+    if (presence_cancels_fade(present)) {
       update_presence_fade_level(true);
       return;
     }
@@ -121,16 +159,12 @@ void update_spa_session() {
 bool visual_is_lit() {
   if (user_is_present()) return true;
   if (mode == MODE_SPA && spa_phase != SPA_NONE) return true;
-  if ((mode == MODE_SHOWCASE || mode == MODE_CANVAS) && presence_fade_level > 0) return true;
+  if ((mode == MODE_CANVAS || mode == MODE_RAINBOW) && presence_fade_level > 0) return true;
   return false;
 }
 
 uint8_t presence_fade_mul() {
   if (mode == MODE_OFF) return 255;
-  if (mode == MODE_SPA && spa_phase == SPA_NONE && !user_is_present()) return 255;
-  if ((mode == MODE_SHOWCASE || mode == MODE_CANVAS) && presence_fade_level == 0 && !user_is_present()) {
-    return 255;
-  }
   return presence_fade_level;
 }
 
@@ -168,18 +202,18 @@ static void handle_mode_change() {
     spa_candle_reset();
   }
 
-  if (mode == MODE_SHOWCASE) {
-    showcase_reset();
-    last_showcase_enc1 = get_encoder1_pos();
-    last_showcase_enc2 = get_encoder2_pos();
+  if (mode == MODE_CANVAS) {
+    last_canvas_enc1 = get_encoder1_pos();
+    last_canvas_enc2 = get_encoder2_pos();
     presence_fade_level = user_is_present() ? 255 : 0;
     presence_fade_last_ms = millis();
     presence_fading = false;
   }
 
-  if (mode == MODE_CANVAS) {
-    last_canvas_enc1 = get_encoder1_pos();
-    last_canvas_enc2 = get_encoder2_pos();
+  if (mode == MODE_RAINBOW) {
+    rainbow_reset();
+    last_rainbow_enc1 = get_encoder1_pos();
+    last_rainbow_enc2 = get_encoder2_pos();
     presence_fade_level = user_is_present() ? 255 : 0;
     presence_fade_last_ms = millis();
     presence_fading = false;
@@ -189,6 +223,10 @@ static void handle_mode_change() {
     reset_presence_fade();
     spa_phase = SPA_NONE;
     spa_candle_reset();
+  }
+
+  if (mode == MODE_SPA || mode == MODE_CANVAS || mode == MODE_RAINBOW) {
+    saved_mode = mode;
   }
 
   last_mode = mode;
@@ -204,43 +242,67 @@ void update_spa_inputs() {
   const long enc2 = get_encoder2_pos();
   const int16_t d1 = (int16_t)(enc1 - last_spa_enc1);
   const int16_t d2 = (int16_t)(enc2 - last_spa_enc2);
+  const bool t2_held = button_is_held(BUTTON_T2);
 
-  spa_tuning_update(d1, d2, button_is_held(BUTTON_T1));
+  if (t2_held && d2 != 0) {
+    note_t2_modifier_used();
+  }
+
+  spa_tuning_update(d1, d2, t2_held);
+
+  if (d1 != 0) {
+    trigger_encoder_feedback(0, (d1 > 0) ? 1 : -1, CHSV(28, 50, 255));
+  }
+  if (d2 != 0) {
+    const CRGB c2 = t2_held ? CRGB(CHSV(220, 220, 255)) : CRGB(CHSV(spa_hue_val(), 200, 255));
+    trigger_encoder_feedback(1, (d2 > 0) ? 1 : -1, c2);
+  }
 
   last_spa_enc1 = enc1;
   last_spa_enc2 = enc2;
 }
 
-void update_showcase_inputs() {
-  if (mode != MODE_SHOWCASE) return;
-  if (button_is_held(BUTTON_T1)) return;
-
-  const long enc1 = get_encoder1_pos();
-  const long enc2 = get_encoder2_pos();
-  const int16_t d1 = (int16_t)(enc1 - last_showcase_enc1);
-  const int16_t d2 = (int16_t)(enc2 - last_showcase_enc2);
-
-  showcase_update(d1, d2, millis());
-
-  last_showcase_enc1 = enc1;
-  last_showcase_enc2 = enc2;
-}
-
 void update_canvas_inputs() {
   if (mode != MODE_CANVAS) return;
-  if (button_is_held(BUTTON_T1)) return;
 
   canvas_tuning_tick();
 
   const long enc1 = get_encoder1_pos();
   const long enc2 = get_encoder2_pos();
-  const int16_t d1 = (int16_t)(enc1 - last_canvas_enc1);
+  (void)enc1;
   const int16_t d2 = (int16_t)(enc2 - last_canvas_enc2);
 
-  canvas_tuning_update(d1, d2);
+  if (button_is_held(BUTTON_T2) && d2 != 0) {
+    note_t2_modifier_used();
+    canvas_tuning_update(d2, 0); // sat
+    trigger_encoder_feedback(1, (d2 > 0) ? 1 : -1, CHSV(220, 220, 255));
+  } else {
+    canvas_tuning_update(0, d2); // hue
+    if (d2 != 0) {
+      trigger_encoder_feedback(1, (d2 > 0) ? 1 : -1, CHSV(canvas_hue_val(), 200, 255));
+    }
+  }
 
   last_canvas_enc1 = enc1;
   last_canvas_enc2 = enc2;
+}
+
+void update_rainbow_inputs() {
+  if (mode != MODE_RAINBOW) return;
+
+  const long enc1 = get_encoder1_pos();
+  const long enc2 = get_encoder2_pos();
+  (void)enc1;
+  const int16_t d2 = (int16_t)(enc2 - last_rainbow_enc2);
+
+  rainbow_update(0, d2, millis());
+
+  if (d2 != 0) {
+    trigger_encoder_feedback(1, (d2 > 0) ? 1 : -1, CHSV(160, 200, 255));
+  }
+
+  last_rainbow_enc1 = enc1;
+  last_rainbow_enc2 = enc2;
 }
 
 void update_daynight_schedule() {
@@ -259,19 +321,29 @@ void update_daynight_schedule() {
   }
 }
 
-static const unsigned long T2_DOUBLE_CLICK_MS = 400;
-static const unsigned long T2_HOLD_MS = 700;
-static unsigned long t2_last_click_ms = 0;
-static bool t2_pending_single = false;
-static unsigned long t2_hold_start_ms = 0;
-static bool t2_hold_fired = false;
-
-static void cycle_light_mode() {
+static void mode_next() {
   if (mode == MODE_OFF) {
-    mode = MODE_SPA;
+    mode = (saved_mode == MODE_SPA || saved_mode == MODE_CANVAS || saved_mode == MODE_RAINBOW)
+               ? saved_mode
+               : MODE_SPA;
   } else if (mode == MODE_SPA) {
-    mode = MODE_SHOWCASE;
-  } else if (mode == MODE_SHOWCASE) {
+    mode = MODE_CANVAS;
+  } else if (mode == MODE_CANVAS) {
+    mode = MODE_RAINBOW;
+  } else {
+    mode = MODE_SPA;
+  }
+  handle_mode_change();
+}
+
+static void mode_prev() {
+  if (mode == MODE_OFF) return;
+
+  if (mode == MODE_SPA) {
+    mode = MODE_RAINBOW;
+  } else if (mode == MODE_CANVAS) {
+    mode = MODE_SPA;
+  } else if (mode == MODE_RAINBOW) {
     mode = MODE_CANVAS;
   } else {
     mode = MODE_SPA;
@@ -279,9 +351,30 @@ static void cycle_light_mode() {
   handle_mode_change();
 }
 
+static void power_toggle() {
+  if (mode == MODE_OFF) {
+    mode = (saved_mode == MODE_SPA || saved_mode == MODE_CANVAS || saved_mode == MODE_RAINBOW)
+               ? saved_mode
+               : MODE_SPA;
+    handle_mode_change();
+    trigger_zone(1, CRGB::Green);
+    return;
+  }
+
+  if (mode == MODE_SPA || mode == MODE_CANVAS || mode == MODE_RAINBOW) {
+    saved_mode = mode;
+  }
+  always_on = false;
+  mode = MODE_OFF;
+  handle_mode_change();
+  trigger_status_shutdown();
+}
+
 static void apply_always_on_wake() {
   if (mode == MODE_OFF) {
-    mode = MODE_SPA;
+    mode = (saved_mode == MODE_SPA || saved_mode == MODE_CANVAS || saved_mode == MODE_RAINBOW)
+               ? saved_mode
+               : MODE_SPA;
     handle_mode_change();
     return;
   }
@@ -295,42 +388,17 @@ static void apply_always_on_wake() {
   }
 }
 
-static bool handle_t2_click() {
-  const unsigned long now = millis();
-
-  if (t2_pending_single && (now - t2_last_click_ms) <= T2_DOUBLE_CLICK_MS) {
-    t2_pending_single = false;
-    mode = MODE_OFF;
-    handle_mode_change();
-    trigger_status_shutdown();
-    return true;
-  }
-
-  t2_pending_single = true;
-  t2_last_click_ms = now;
-  return false;
-}
-
 void update_mode_button_pending() {
-  if (!t2_pending_single) return;
-  if (t2_hold_fired) return;
-  if (millis() - t2_last_click_ms <= T2_DOUBLE_CLICK_MS) return;
-
-  t2_pending_single = false;
-  cycle_light_mode();
+  // T2 uses press/release + hold; no deferred single-click queue.
 }
 
 void update_t2_hold() {
   if (button_is_held(BUTTON_T2)) {
-    if (t2_hold_start_ms == 0) {
-      t2_hold_start_ms = millis();
-      return;
-    }
-    if (t2_hold_fired) return;
-    if (millis() - t2_hold_start_ms < T2_HOLD_MS) return;
+    if (!t2_press_active) return;
+    if (t2_hold_fired || t2_encoder_used) return;
+    if (millis() - t2_press_ms < T2_HOLD_MS) return;
 
     t2_hold_fired = true;
-    t2_pending_single = false;
     always_on = !always_on;
     if (always_on) {
       apply_always_on_wake();
@@ -341,25 +409,32 @@ void update_t2_hold() {
     return;
   }
 
-  t2_hold_start_ms = 0;
-  t2_hold_fired = false;
+  if (t2_press_active) {
+    if (!t2_hold_fired && !t2_encoder_used) {
+      power_toggle();
+    }
+    t2_press_active = false;
+    t2_hold_fired = false;
+    t2_encoder_used = false;
+  }
 }
 
 void handle_mode_buttons(ButtonEvent e) {
   switch (e) {
     case BUTTON_T1:
+      mode_prev();
       trigger_zone(0, CRGB::Red);
       break;
 
     case BUTTON_T2:
-      if (t2_hold_fired) break;
-      if (!handle_t2_click()) {
-        trigger_zone(1, CRGB::Green);
-      }
+      t2_press_active = true;
+      t2_press_ms = millis();
+      t2_hold_fired = false;
+      t2_encoder_used = false;
       break;
 
     case BUTTON_T3:
-      toggle_spa_candle();
+      mode_next();
       trigger_zone(2, CRGB::Blue);
       break;
 
