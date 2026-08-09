@@ -11,7 +11,6 @@
 
 static bool schedule_time_ready = false;
 
-static const CRGB SPA_COLOR_MORNING(255, 215, 170);
 static const CRGB SPA_COLOR_DAY(255, 175, 90);
 static const CRGB SPA_COLOR_EVENING(255, 85, 12);
 static const CRGB SPA_COLOR_NIGHT(255, 50, 5);
@@ -117,7 +116,6 @@ bool schedule_is_night(int minutes) {
 
 void spa_schedule_targets(float minutes, uint8_t* out_brightness, CRGB* out_color) {
   const int m05 = 5 * 60;
-  const int m08 = 8 * 60;
   const int m16 = 16 * 60;
   const int m21 = 21 * 60;
   const int m22 = 22 * 60;
@@ -126,11 +124,7 @@ void spa_schedule_targets(float minutes, uint8_t* out_brightness, CRGB* out_colo
   float brightness;
   CRGB color;
 
-  if (minutes >= m05 && minutes < m08) {
-    const float t = (float)(minutes - m05) / (float)(m08 - m05);
-    brightness = schedule_lerp((float)NIGHT_MIN_BRIGHTNESS, 255.0f, t);
-    color = schedule_lerp_rgb(SPA_COLOR_MORNING, SPA_COLOR_DAY, t);
-  } else if (minutes >= m08 && minutes < m16) {
+  if (minutes >= m05 && minutes < m16) {
     brightness = 255.0f;
     color = SPA_COLOR_DAY;
   } else if (minutes >= m16 && minutes < m21) {
@@ -147,9 +141,9 @@ void spa_schedule_targets(float minutes, uint8_t* out_brightness, CRGB* out_colo
     const float t = (float)night_minutes_since_22((int)minutes) / (float)night_span;
     const float tn = (t > 1.0f) ? 1.0f : t;
     if (tn < 1.0f) {
-      color = schedule_lerp_rgb(SPA_COLOR_NIGHT, SPA_COLOR_MORNING, tn);
+      color = schedule_lerp_rgb(SPA_COLOR_NIGHT, SPA_COLOR_DAY, tn);
     } else {
-      color = SPA_COLOR_MORNING;
+      color = SPA_COLOR_DAY;
     }
   }
 
