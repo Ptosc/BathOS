@@ -9,15 +9,25 @@ static long last_canvas_enc1 = 0;
 static long last_canvas_enc2 = 0;
 static bool presence_fading = false;
 static uint8_t presence_fade_level = 255;
+static float presence_fade_value = 255.0f;
 static unsigned long presence_fade_last_ms = 0;
 static const CRGB NIGHT_CANVAS_COLOR(255, 20, 0);
 static const uint8_t NIGHT_CANVAS_BRIGHTNESS_RAW = 80; // Gamma-mapped to about 20/255.
 static uint8_t brightness_before_night = 200;
 static bool night_brightness_active = false;
 
+static void set_presence_fade_level(uint8_t level) {
+  presence_fade_level = level;
+  presence_fade_value = (float)level;
+}
+
+static bool presence_fade_is_complete() {
+  return presence_fade_level == 0;
+}
+
 static void reset_presence_fade() {
   presence_fading = false;
-  presence_fade_level = 255;
+  set_presence_fade_level(255);
   presence_fade_last_ms = millis();
 }
 
@@ -25,16 +35,18 @@ static void step_presence_fade_level(unsigned long dt, bool ramp_up) {
   if (dt == 0) return;
 
   const unsigned long span = ramp_up ? PRESENCE_FADE_IN_MS : PRESENCE_FADE_OUT_MS;
-  unsigned long step = (255UL * dt) / span;
-  if (step == 0) step = 1;
+  const float step = 255.0f * (float)dt / (float)span;
 
   if (ramp_up) {
-    const uint16_t next = (uint16_t)presence_fade_level + step;
-    presence_fade_level = (next >= 255) ? 255 : (uint8_t)next;
-    return;
+    presence_fade_value += step;
+    if (presence_fade_value > 255.0f) presence_fade_value = 255.0f;
+  } else {
+    presence_fade_value -= step;
+    if (presence_fade_value < 0.0f) presence_fade_value = 0.0f;
   }
 
-  presence_fade_level = (presence_fade_level > step) ? presence_fade_level - step : 0;
+  presence_fade_level = (uint8_t)constrain(
+      (int)(presence_fade_value + 0.5f), 0, 255);
 }
 
 static void update_presence_fade_level(bool present) {
@@ -46,7 +58,7 @@ static void update_presence_fade_level(bool present) {
   if (dt > 50) dt = 50;
 
   if (present) {
-    if (presence_fade_level < 255) {
+    if (presence_fade_value < 255.0f) {
       step_presence_fade_level(dt, true);
     }
     return;
@@ -54,9 +66,9 @@ static void update_presence_fade_level(bool present) {
 
   if (mode == MODE_SPA && spa_phase == SPA_NONE) return;
   if (mode != MODE_SPA && mode != MODE_SHOWCASE && mode != MODE_CANVAS) return;
-  if (mode != MODE_SPA && presence_fade_level == 0) return;
+  if (mode != MODE_SPA && presence_fade_is_complete()) return;
 
-  if (presence_fade_level > 0) {
+  if (!presence_fade_is_complete()) {
     step_presence_fade_level(dt, false);
   }
 }
@@ -66,7 +78,7 @@ static void update_spa_session_for_presence(bool present) {
     presence_fading = (presence_fade_level < 255);
     if (spa_phase == SPA_NONE) {
       spa_phase = SPA_BASE;
-      presence_fade_level = 255;
+      set_presence_fade_level(255);
       presence_fading = false;
       spa_apply_schedule_defaults_now();
     }
@@ -79,7 +91,7 @@ static void update_spa_session_for_presence(bool present) {
   presence_fading = true;
   update_presence_fade_level(false);
 
-  if (presence_fade_level == 0) {
+  if (presence_fade_is_complete()) {
     presence_fading = false;
     spa_phase = SPA_NONE;
     spa_candle_reset();
@@ -110,7 +122,7 @@ void update_presence_session() {
       return;
     }
 
-    if (presence_fade_level == 0) return;
+    if (presence_fade_is_complete()) return;
 
     presence_fading = true;
     update_presence_fade_level(false);
@@ -123,16 +135,18 @@ void update_spa_session() {
 }
 
 bool visual_is_lit() {
+  if (mode == MODE_OFF) return false;
   if (user_is_present()) return true;
   if (mode == MODE_SPA && spa_phase != SPA_NONE) return true;
-  if ((mode == MODE_SHOWCASE || mode == MODE_CANVAS) && presence_fade_level > 0) return true;
+  if ((mode == MODE_SHOWCASE || mode == MODE_CANVAS) && !presence_fade_is_complete()) return true;
   return false;
 }
 
 uint8_t presence_fade_mul() {
   if (mode == MODE_OFF) return 255;
   if (mode == MODE_SPA && spa_phase == SPA_NONE && !user_is_present()) return 255;
-  if ((mode == MODE_SHOWCASE || mode == MODE_CANVAS) && presence_fade_level == 0 && !user_is_present()) {
+  if ((mode == MODE_SHOWCASE || mode == MODE_CANVAS) &&
+      presence_fade_is_complete() && !user_is_present()) {
     return 255;
   }
   return presence_fade_level;
@@ -163,9 +177,8 @@ static void handle_mode_change() {
     last_spa_enc1 = get_encoder1_pos();
     last_spa_enc2 = get_encoder2_pos();
     spa_apply_schedule_defaults_now();
-    if (user_is_present()) {
+    if (user_is_present() || (last_mode != MODE_OFF && !presence_fade_is_complete())) {
       spa_phase = SPA_BASE;
-      presence_fade_level = 255;
     } else {
       spa_phase = SPA_NONE;
     }
@@ -176,17 +189,21 @@ static void handle_mode_change() {
     showcase_reset();
     last_showcase_enc1 = get_encoder1_pos();
     last_showcase_enc2 = get_encoder2_pos();
-    presence_fade_level = user_is_present() ? 255 : 0;
+    if (last_mode == MODE_OFF && !user_is_present()) {
+      set_presence_fade_level(0);
+    }
     presence_fade_last_ms = millis();
-    presence_fading = false;
+    presence_fading = !user_is_present() && !presence_fade_is_complete();
   }
 
   if (mode == MODE_CANVAS) {
     last_canvas_enc1 = get_encoder1_pos();
     last_canvas_enc2 = get_encoder2_pos();
-    presence_fade_level = user_is_present() ? 255 : 0;
+    if (last_mode == MODE_OFF && !user_is_present()) {
+      set_presence_fade_level(0);
+    }
     presence_fade_last_ms = millis();
-    presence_fading = false;
+    presence_fading = !user_is_present() && !presence_fade_is_complete();
   }
 
   if (mode == MODE_OFF) {
@@ -316,7 +333,7 @@ static void apply_always_on_wake() {
 
   if (mode == MODE_SPA && spa_phase == SPA_NONE) {
     spa_phase = SPA_BASE;
-    presence_fade_level = 255;
+    set_presence_fade_level(255);
     presence_fading = false;
     spa_apply_schedule_defaults_now();
     spa_candle_reset();

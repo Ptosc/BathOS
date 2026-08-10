@@ -53,7 +53,6 @@ enum SpaPhase {
 extern SpaPhase spa_phase;
 
 static const unsigned long TRANSITION_MS = 800;
-static const unsigned long TRANSITION_PRESENCE_MS = 280;
 static const unsigned long PRESENCE_FADE_OUT_MS = 180000UL; // 3 min
 static const unsigned long PRESENCE_FADE_IN_MS = 5000;      // return during fade-out
 

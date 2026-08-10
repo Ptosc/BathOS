@@ -7,16 +7,10 @@ static unsigned long transition_duration_ms = TRANSITION_MS;
 static bool transitioning = false;
 
 static bool visual_state_equals(const VisualState& a, const VisualState& b) {
+  // Presence visibility is already faded continuously in the output scaler.
+  // Treating it as a scene change restarted crossfades without changing pixels.
   return a.mode == b.mode
-      && a.spa_phase == b.spa_phase
-      && a.active == b.active;
-}
-
-static unsigned long transition_ms_for(const VisualState& from, const VisualState& to) {
-  if (from.mode == to.mode && from.spa_phase == to.spa_phase && from.active != to.active) {
-    return TRANSITION_PRESENCE_MS;
-  }
-  return TRANSITION_MS;
+      && a.spa_phase == b.spa_phase;
 }
 
 static float ease_in_out(float t) {
@@ -48,7 +42,7 @@ void transition_begin_if_changed(const VisualState& target, const CRGB* last_dis
     if (!visual_state_equals(transition_target, target)) {
       capture_frame(prev_frame, last_displayed_frame);
       transition_target = target;
-      transition_duration_ms = transition_ms_for(displayed_state, target);
+      transition_duration_ms = TRANSITION_MS;
       transition_start_ms = millis();
     }
     return;
@@ -58,7 +52,7 @@ void transition_begin_if_changed(const VisualState& target, const CRGB* last_dis
 
   capture_frame(prev_frame, last_displayed_frame);
   transition_target = target;
-  transition_duration_ms = transition_ms_for(displayed_state, target);
+  transition_duration_ms = TRANSITION_MS;
   transition_start_ms = millis();
   transitioning = true;
 }
