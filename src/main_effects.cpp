@@ -20,11 +20,11 @@ void render_visual_state_to(CRGB* buf, const VisualState& vs) {
     case MODE_SPA:
       render_spa(vs.spa_phase);
       break;
-    case MODE_SHOWCASE:
-      render_showcase();
-      break;
     case MODE_CANVAS:
       render_canvas(millis());
+      break;
+    case MODE_RAINBOW:
+      render_rainbow();
       break;
     default:
       render_off();

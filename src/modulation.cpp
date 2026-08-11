@@ -3,6 +3,9 @@
 static float intensity_smooth = 0.0f;
 static bool user_occupied = false;
 static unsigned long absent_hold_start_ms = 0;
+static int last_activity_distance_cm = -1;
+static unsigned long last_distance_activity_ms = 0;
+static bool occupancy_frozen_off = false;
 
 static float map_brightness(uint8_t raw) {
   const float GAMMA = 2.2f;
@@ -51,9 +54,44 @@ static void update_occupancy_latch() {
   }
 }
 
+static void update_static_presence_timeout() {
+  const unsigned long now = millis();
+
+  if (sensor_presence < 0.5f) {
+    occupancy_frozen_off = false;
+    last_activity_distance_cm = -1;
+    last_distance_activity_ms = now;
+    return;
+  }
+
+  if (raw_distance > 0) {
+    if (last_activity_distance_cm < 0 ||
+        abs(raw_distance - last_activity_distance_cm) >= PRESENCE_STATIC_DELTA_CM) {
+      last_activity_distance_cm = raw_distance;
+      last_distance_activity_ms = now;
+      occupancy_frozen_off = false;
+    }
+  } else if (last_distance_activity_ms == 0) {
+    last_distance_activity_ms = now;
+  }
+
+  if (always_on) return;
+  if (!user_occupied && !occupancy_frozen_off) return;
+
+  if (!occupancy_frozen_off &&
+      (now - last_distance_activity_ms) >= PRESENCE_STATIC_TIMEOUT_MS) {
+    occupancy_frozen_off = true;
+  }
+
+  if (occupancy_frozen_off) {
+    user_occupied = false;
+  }
+}
+
 void update_state() {
   update_presence_signal();
   update_occupancy_latch();
+  update_static_presence_timeout();
 }
 
 bool user_is_present() {

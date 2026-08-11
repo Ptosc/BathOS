@@ -131,22 +131,18 @@ void spa_tuning_tick() {
   spa_base_rgb = CHSV((uint8_t)(wrap_hue(hue) + 0.5f), (uint8_t)(sat + 0.5f), 255);
 }
 
-void spa_tuning_update(int16_t enc1_delta, int16_t enc2_delta, bool t1_held) {
-  if (enc1_delta != 0 && !t1_held) {
+void spa_tuning_update(int16_t enc1_delta, int16_t enc2_delta, bool t2_held) {
+  if (enc1_delta != 0) {
     spa_brightness_from_schedule = false;
-  }
-
-  if ((t1_held && enc1_delta != 0) || enc2_delta != 0) {
-    spa_color_from_schedule = false;
-  }
-
-  if (t1_held && enc1_delta != 0) {
-    sat_target = clamp_f(sat_target + enc1_delta * SPA_SAT_STEP, 0.0f, 255.0f);
-  } else if (enc1_delta != 0) {
     brightness_target = clamp_f(brightness_target + enc1_delta * SPA_BRIGHTNESS_STEP, 0.0f, 255.0f);
   }
 
-  if (enc2_delta != 0) {
+  if (enc2_delta == 0) return;
+
+  spa_color_from_schedule = false;
+  if (t2_held) {
+    sat_target = clamp_f(sat_target + enc2_delta * SPA_SAT_STEP, 0.0f, 255.0f);
+  } else {
     hue_target += enc2_delta * SPA_HUE_STEP;
   }
 }

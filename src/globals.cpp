@@ -15,7 +15,7 @@ float presence = 0.0;
 float sensor_presence = 0.0;
 
 int mode = 0;
-const int max_modes = 4;
+const int max_modes = 5; // off, spa, canvas, rainbow (+ unused showcase slot)
 bool always_on = false;
 
 SpaPhase spa_phase = SPA_NONE;

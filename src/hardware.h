@@ -42,6 +42,7 @@ static const int MODE_OFF = 0;
 static const int MODE_SPA = 1;
 static const int MODE_SHOWCASE = 2;
 static const int MODE_CANVAS = 3;
+static const int MODE_RAINBOW = 4;
 extern bool always_on;
 
 enum SpaPhase {
@@ -55,6 +56,8 @@ extern SpaPhase spa_phase;
 static const unsigned long TRANSITION_MS = 800;
 static const unsigned long PRESENCE_FADE_OUT_MS = 180000UL; // 3 min
 static const unsigned long PRESENCE_FADE_IN_MS = 5000;      // return during fade-out
+// Ignore brief presence blips (door / walk-past) once fade-out has started.
+static const unsigned long PRESENCE_REENTER_MS = 2000;
 
 // mmWave UART presence (centimeters). Wider hysteresis + longer OFF debounce
 // reduce drop-outs while occupied; stale UART is debounced like a normal OFF.
@@ -72,6 +75,10 @@ static const float PRESENCE_FALL_RATE = 0.07f;
 static const float PRESENCE_ENTER_LEVEL = 0.30f;
 static const float PRESENCE_EXIT_LEVEL = 0.10f;
 static const unsigned long PRESENCE_EXIT_HOLD_MS = 500;
+// Force occupancy off if mmWave distance stays within this band for too long
+// (stuck ON / no motion). Cleared when distance moves or sensor reports OFF.
+static const unsigned long PRESENCE_STATIC_TIMEOUT_MS = 300000UL; // 5 min
+static const int PRESENCE_STATIC_DELTA_CM = 12;
 
 static const unsigned CANDLE_FRAME_MS = 25;
 static const uint8_t CANDLE_SPEED = 96;
@@ -93,7 +100,7 @@ struct LightMod {
 
 extern LightMod mod;
 
-// Brightness setpoint 0..255 (T1 held + encoder1 outside spa); smoothed in compute_modulation()
+// Brightness setpoint 0..255 (Enc1 outside Spa); smoothed in compute_modulation()
 extern uint8_t g_brightness_raw;
 
 // --- Input layer ---
@@ -135,7 +142,6 @@ void spa_apply_schedule_defaults_now();
 
 void showcase_reset();
 void showcase_update(int16_t enc1_delta, int16_t enc2_delta, unsigned long now_ms);
-void update_showcase_inputs();
 
 void canvas_apply_defaults(uint8_t default_hue, uint8_t default_sat);
 void canvas_apply_defaults_rgb(CRGB color);
@@ -145,10 +151,16 @@ void render_canvas(unsigned long now_ms);
 uint8_t canvas_hue_val();
 void update_canvas_inputs();
 
+void rainbow_reset();
+void rainbow_apply_schedule(uint8_t preset_index, float energy);
+void rainbow_update(int16_t enc1_delta, int16_t enc2_delta, unsigned long now_ms);
+void render_rainbow();
+void update_rainbow_inputs();
+
 // --- Spa ---
 void spa_apply_schedule_defaults(uint8_t default_brightness, CRGB color);
 void spa_tuning_tick();
-void spa_tuning_update(int16_t enc1_delta, int16_t enc2_delta, bool t1_held);
+void spa_tuning_update(int16_t enc1_delta, int16_t enc2_delta, bool t2_held);
 uint8_t spa_brightness_val();
 uint8_t spa_sat_val();
 uint8_t spa_hue_val();
@@ -165,6 +177,7 @@ void spa_candle_reset();
 void render_spa_candle(CRGB* out, CRGB bright, CRGB dim);
 void update_status();
 void trigger_zone(uint8_t zone, CRGB color);
+void trigger_encoder_feedback(uint8_t encoder, int8_t direction, CRGB color);
 void trigger_status_shutdown();
 
 // --- Transitions ---

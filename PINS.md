@@ -12,9 +12,9 @@
 |-----:|-------------------------|------------------------------------|-----------|----------|
 | 5    | `PIN`                   | Haupt‑LED‑Strip Data (WS2812B)     | Ausgang   | 30 LEDs; FastLED |
 | 33   | `STATUS_PIN`            | Status‑LED‑Strip Data (WS2812B)    | Ausgang   | 6 LEDs |
-| 23   | `taster1_pin`           | Taster T1                          | Eingang   | INPUT_PULLUP; active LOW |
-| 18   | `taster2_pin`           | Taster T2 (Modus)                  | Eingang   | INPUT_PULLUP; Kurz = Modus, Doppelklick = Aus, Halten = Always On |
-| 17   | `taster3_pin`           | Taster T3                          | Eingang   | INPUT_PULLUP |
+| 23   | `taster1_pin`           | Taster T1 (Modus zurück)           | Eingang   | INPUT_PULLUP; active LOW |
+| 18   | `taster2_pin`           | Taster T2 (Power)                  | Eingang   | INPUT_PULLUP; Tippen = An/Aus, Halten = Always On |
+| 17   | `taster3_pin`           | Taster T3 (Modus vor)              | Eingang   | INPUT_PULLUP |
 | 16   | `mmwave_tx_pin`         | mmWave UART TX (ESP → Modul RX)    | Ausgang   | Serial2, 115200 Baud |
 | 34   | `mmwave_rx_pin`         | mmWave UART RX (ESP ← Modul TX)    | Eingang   | Nur Input; ADC2‑Pin, kein WiFi‑Konflikt bei UART |
 | 25   | `encoder1_a_pin`        | Rotary Encoder 1 — A (CLK)         | Eingang   | INPUT_PULLUP; IRQ |
@@ -34,9 +34,12 @@
 
 | Taster | GPIO | Funktion |
 |--------|-----:|----------|
-| T1 | 23 | Visuelles Feedback (rote Status‑Zone); mit Enc1: Sättigung (Spa) bzw. Helligkeit (Showcase/Canvas) |
-| T2 | 18 | Kurz: Modus wechseln (Spa → Showcase → Canvas); Doppelklick: Aus; Halten (~700 ms): Always On |
-| T3 | 17 | Spa: Base ↔ Candle umschalten |
+| T1 | 23 | Vorheriger Modus |
+| T2 | 18 | Tippen: An/Aus; Halten (~700 ms): Always On |
+| T3 | 17 | Nächster Modus (aus OFF: letzter Modus / Spa) |
+| Enc1 | — | Helligkeit; Status-Comet warmweiß |
+| Enc2 | — | Hue (Spa/Canvas) bzw. Preset (Rainbow); Status-Comet farbig |
+| T2 + Enc2 | — | Sättigung (Spa, Canvas); Status-Comet magenta |
 
 ## Kurz‑Wiring
 

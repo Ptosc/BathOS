@@ -62,8 +62,8 @@ void loop() {
   }
   compute_modulation();
 
-  update_showcase_inputs();
   update_canvas_inputs();
+  update_rainbow_inputs();
   update_spa_inputs();
 
   update_status();
